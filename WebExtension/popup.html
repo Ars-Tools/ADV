@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADV</title><link rel="stylesheet" href="popup.css"></head>
+<body><header><div><p class="eyebrow">PERSONAL SAFARI FILTER</p><h1>ADV</h1></div><div class="mark" aria-hidden="true"><i></i><i></i><i></i></div></header>
+<p class="tagline">Less noise. More space.</p><p id="site">Loading site…</p>
+<p id="network" class="hint" role="status">Checking network filters…</p>
+<section><h2><span class="index red">01</span> Select content</h2>
+<button id="pick" disabled>Pick elements to hide</button>
+<p class="hint">Click or tap several elements on the page, review your selections, then save them together. Rules apply to this exact hostname on every page.</p>
+<p id="status" role="status">Loading rules…</p></section>
+<section><h2><span class="index blue">02</span> Add in bulk</h2>
+<label for="selectors">CSS selectors, one per line</label>
+<textarea id="selectors" rows="5" placeholder="#sidebar-ad&#10;.sponsored-card&#10;aside .advertisement" spellcheck="false"></textarea>
+<p class="hint">Save up to 1000 selectors for this exact hostname. Existing rules are kept; duplicates are skipped.</p>
+<button id="save-bulk" disabled>Save rules</button><p id="bulk-status" class="hint" role="status"></p></section>
+<section><h2><span class="index blue">03</span> Rules for this site</h2><ul id="rules"></ul></section>
+<section><h2><span class="index red">04</span> Blocked sources · all sites</h2>
+<p class="hint">Block an advertising host and its subdomains across websites. Normal resources on the same host will also be blocked. Opening the site itself is allowed.</p>
+<label for="source-host">Advertising source hostname</label><input id="source-host" placeholder="ads.example.com" spellcheck="false" autocapitalize="none">
+<button id="block-source">Block source everywhere</button><p id="source-status" class="hint" role="status"></p><ul id="blocked-sources"></ul>
+<p class="hint">Source rules persist in this Safari profile. They do not sync with iCloud yet. Reload pages after changing source rules.</p></section>
+<p class="hint">Cloud sync runs when you open the signed ADV app. Reload pages after syncing.</p>
+<script src="popup.js"></script></body></html>
