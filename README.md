@@ -1,0 +1,338 @@
+# ADV
+
+A personal Safari ad blocker for macOS and iOS. SwiftPM manages native sources,
+targets, and dependencies. `Tools/package.py` assembles and signs Apple's app and
+extension bundles. No `.xcodeproj` or `.xcworkspace` is generated.
+
+`NetworkRules` defines DNR rules directly; `ADVCheck export [output.json]` exports
+them for packaging. The WebKit verifier alone adapts them to Content Blocker rules.
+Mac entitlements live in each executable target's source directory and are used
+for local signing or merged with provisioning entitlements for configured builds.
+
+> **Note:** This codebase was written using GPT-6.1 Sol with Medium reasoning effort.
+
+The native app, Safari popup, and element-picker panel use a Bauhaus-inspired
+design: warm paper, black typography and rules, primary-color geometric shapes,
+numbered sections, and rectangular controls. The interface uses a consistent
+light palette, including when the system is in Dark Mode.
+
+## Features
+
+- **One ADV Safari Web Extension (`ADV.appex`):** blocks advertising requests
+  with 14 static `declarativeNetRequest` rules, hides common ad slots, provides
+  the element picker and rule management, and runs experimental YouTube handling.
+- **Personal filters:** exact-hostname CSS selectors, applied to every page on
+  that hostname. Saving a filter hides matching content; it does not prevent its
+  network requests. It does not apply to other subdomains automatically.
+- **iCloud synchronization:** CloudKit private-database synchronization through
+  the native app, available after configuring signed App Groups and CloudKit.
+- English UI and documentation; no analytics, remote filter subscriptions, or
+  transmission of browsing history. CloudKit stores only personal filter records
+  (hostnames, selectors, IDs, modification times, and deletion markers).
+
+YouTube support remains experimental. It hides display ads, clicks visible skip
+controls, and mutes/seeks short ad timelines only when both an ad-state class and
+visible ad UI are present. Unknown or long ad timelines are accelerated. Playback
+settings are restored after ads; changed media sources are protected against stale
+ad UI. This does not guarantee removal of all YouTube ads, detect sponsorships,
+or work in the native YouTube app. Live YouTube ad removal remains unverified.
+
+## Requirements and local builds
+
+- Full Xcode SDK/toolchain, Swift 6+, and Python 3 (standard library only).
+- macOS 13+ / iOS 16+; `xcode-select -p` must point at full Xcode.
+- Installing on an iPhone requires appropriate signing and provisioning for the
+  app and its single extension. This tool does not create or download profiles.
+- A paid Apple Developer Program membership is needed for the CloudKit setup
+  described below. App Store publication is not needed for development testing.
+
+Run commands from this directory:
+
+```sh
+swift test
+python3 Tools/package.py macos
+open dist/macos/ADV.app
+```
+
+Quit an older ADV process before reopening a rebuilt app. The default Mac build
+is ad-hoc signed. Safari may require **Allow unsigned extensions** for local
+experiments. The packaging tool does not change this Safari setting.
+In Safari 17 or later, this option is under Settings → Developer. Safari resets
+it whenever you quit: enable it again after reopening Safari, or the development
+extension will be hidden from the Extensions list.
+
+Rebuilding replaces the app bundle and can temporarily remove ADV from Safari's
+extension list. Open the rebuilt `dist/macos/ADV.app` to refresh macOS extension
+registration, then reopen Safari's Extensions settings. Restarting Safari alone
+does not register the rebuilt app and also resets the unsigned-extension option.
+
+If ADV remains absent with unsigned extensions allowed, refresh the existing
+bundle's registration (this does not change Safari permissions):
+
+```sh
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$PWD/dist/macos/ADV.app"
+pluginkit -a "$PWD/dist/macos/ADV.app/Contents/PlugIns/ADV.appex"
+```
+
+Then use ADV's **Safari settings** button to reopen the Extensions list.
+
+Enable **ADV** in Safari → Settings → Extensions. On iOS,
+use Settings → Apps → Safari → Extensions (Settings → Safari on iOS 16–17).
+The `.YouTube` bundle identifier is retained to preserve existing Web Extension
+settings and personal filters; the visible extension name is now **ADV**.
+Private Browsing has separate permission controls.
+
+## Add and remove personal filters in Safari
+
+1. Open a normal HTTP/HTTPS page. Grant **ADV** access to that website
+   using Safari's extension website permissions. Choose persistent permission
+   for that site if you want filters to run after subsequent navigations.
+2. Open **ADV** from Safari's toolbar (the Extensions menu on iOS).
+3. Select **Pick elements to hide**. Tap or click unwanted elements one after
+   another. Blue outlines mark selected elements. Click a selected element again
+   to deselect it, or use **Remove** in the picker's review list.
+4. Check the generated selectors and matching-element count. You can edit the
+   last selected filter. Select **Hide … selected filter(s)** to save all selections
+   together, or **Cancel** / Escape to dismiss without saving. The picker remains
+   open while you select elements; one save persists the whole selection.
+5. Use **Remove** in the popup to delete a saved filter.
+
+To register several filters at once, open **Add in bulk** in the popup, paste one
+CSS selector per line, then select **Save rules**. For example:
+
+```css
+#sidebar-ad
+.sponsored-card
+aside .advertisement
+```
+
+All lines apply to the current page's exact hostname. Blank lines are ignored;
+duplicates are skipped. Each submission supports up to 1000 selectors. Validation
+errors cancel the entire batch. Permitted open tabs refresh after saving.
+
+Rules are persistent, not session-only: Safari restarts, page reloads, and rebuilding
+ADV with the same extension identifier keep the saved rules in the same Safari
+profile. Removing the extension or deleting its profile data may delete them.
+This storage is currently browser-local JSON or signed App Group JSON, not SwiftData.
+
+Saving source blocks does not save selected CSS filters: use **Hide … selected
+filter(s)** for those. If a rule remains in **Rules for this site** but an ad returns,
+check whether its selector still matches and whether the hostname or Safari website
+permission has changed.
+
+The picker prefers ad attributes and skips likely hash IDs/classes. This is a
+heuristic, not a guarantee. For rotating IDs, edit the selector to target a stable
+class, attribute, or ancestor, for example `.advertisement`, `[data-ad-slot]`, or
+`[id^="ad-slot-"]` when that prefix is stable. Attribute-prefix selectors match all
+elements with that prefix; review the matching count before saving. Saved CSS also
+applies to matching elements inserted later. Positional `:nth-of-type()` fallbacks
+can break when the layout changes. A random ID alone does not identify advertising;
+when no stable DOM feature exists, block the advertising source or use a site-specific
+filter based on the actual markup.
+
+## Block an advertising source across websites
+
+Select ad elements with **Pick elements to hide**. The picker lists source hosts
+found in selected images, iframe URLs, media URLs, and background images. Check
+the advertising hosts you want to block, then select **Block sources everywhere**.
+No source is selected automatically. The advertiser's destination link is not
+treated as the delivery source: a DMM/FANZA link alone does not identify the host
+serving that advertisement.
+
+Source blocks apply to that exact host and its subdomains across websites where
+Safari permits blocking. They block resource requests, including ad iframe loads,
+without blocking top-level navigation to the provider's website. Shared CDNs may
+also serve normal content; review the host before selecting it. Some ads expose
+no source URL on their selected element. Cross-origin iframe contents cannot be
+inspected; the iframe's own source is a candidate.
+
+The popup's **Blocked sources · all sites** section lists saved hosts. Use
+**Unblock** to undo one, or enter a known advertising hostname manually. Reload
+pages after changing source rules: already downloaded ads may stay on the page.
+Element hiding and source blocking are separate actions.
+
+Global source hosts are saved in `browser.storage.local` and installed with
+Safari's dynamic DNR rules. The background restores these rules from saved hosts
+when it starts. They survive Safari restarts and rebuilding the same extension.
+This list currently stays in the Safari profile and does **not** use App Group,
+CloudKit, or SwiftData. Up to 1000 source hosts are supported. Existing built-in
+advertising rules remain independent.
+
+The extension declares HTTP/HTTPS site access to support filters on arbitrary
+sites. Safari controls the sites where it may actually run. Restricted browser
+pages are unsupported. Picking starts in the top frame; content inside cross-origin
+iframes and shadow roots cannot be selected individually in this version. You can
+pick an iframe as a whole. Selectors based on unstable classes or DOM positions
+may stop matching when a site changes, or match different content later.
+
+**Without signed App Groups**, filters are saved in `browser.storage.local` in
+that Safari profile. They work without rebuilding the app but are not visible to
+the native app or other devices. This implementation does not treat
+`browser.storage.sync` as an iCloud service. Clearing extension storage can remove
+local rules. Both hosts and selectors are stored, rather than full page URLs.
+
+**With signed App Groups**, the native app and the single extension share a locked,
+atomically written rule file. The web script applies personal filters and picks up
+shared changes while the page is visible. Reload Safari pages after syncing.
+Existing browser-local rules migrate into shared storage, including deletion
+markers, on first access after signing is configured. Keep the same bundle IDs and
+Safari profile when upgrading.
+
+## Upgrade from the two-extension build
+
+Version 0.4 has exactly one `.appex`, named **ADV**, which retains the former
+`.YouTube` identifier. The independent `.ContentBlocker` extension is removed.
+Quit ADV, rebuild/reopen the app, and check Safari → Settings → Extensions.
+Enable the remaining ADV extension and grant page access to your chosen sites.
+An enabled old Content Blocker does not automatically enable the Web Extension.
+If Safari still displays a stale entry for the removed extension, restart Safari
+when convenient. Existing rules remain in the retained extension's storage.
+
+The native app checks the Web Extension's enabled state on macOS and iOS 26.2+;
+older iOS versions require checking Safari settings manually. The popup also checks
+whether the static advertising ruleset is enabled. The popup is the source of
+network-filter status. Static rule changes require repackaging/reloading the
+extension. The former native Content Blocker reload button/API is no longer used.
+
+Network filtering uses `declarativeNetRequest`; cosmetic filtering and the picker
+use site-permitted content scripts. The built-in rules block subresources and leave
+main-document navigation alone. The old dedicated popup-window resource type has
+no DNR equivalent in this ruleset and is no longer included. These are distinct
+from hiding page elements, which requires site access.
+
+## Set up iCloud synchronization later
+
+Local filtering works now; cross-device iCloud sync needs the following setup:
+
+1. Join the Apple Developer Program and create explicit App IDs for your native
+   app and its `.YouTube` Web Extension, on both platforms.
+2. Register an App Group, for example `group.com.example.adv`, and enable it for
+   both App IDs. The selected group must be allowed by every profile.
+3. Register one CloudKit container, for example `iCloud.com.example.adv`, and
+   enable **iCloud / CloudKit** on the native app's App ID. Use the **same container**
+   for macOS and iOS. The extension only needs App Groups.
+4. Create/download platform-appropriate Apple Development signing certificates
+   and provisioning profiles for both targets. Use development profiles
+   allowing your devices and the requested capabilities.
+5. Build both platforms with the options below, install, and sign in to the same
+   iCloud account on both devices. Give Safari site permissions on each device.
+6. Open ADV on each device and use **Sync iCloud now**. Sync also runs when ADV
+   becomes active. Reload Safari pages after syncing. If both devices had edits,
+   sync the first device again after the second device has uploaded its changes.
+
+Example (replace every identifier/path/identity with your own):
+
+```sh
+python3 Tools/package.py macos \
+  --bundle-id com.example.adv \
+  --identity 'Apple Development: Your Name (TEAMID)' \
+  --app-profile /absolute/path/mac-App.provisionprofile \
+  --extension-profile /absolute/path/mac-ADV.provisionprofile \
+  --app-group group.com.example.adv \
+  --cloud-container iCloud.com.example.adv \
+  --cloud-environment Development
+
+python3 Tools/package.py ios \
+  --bundle-id com.example.adv \
+  --identity 'Apple Development: Your Name (TEAMID)' \
+  --app-profile /absolute/path/ios-App.mobileprovision \
+  --extension-profile /absolute/path/ios-ADV.mobileprovision \
+  --app-group group.com.example.adv \
+  --cloud-container iCloud.com.example.adv \
+  --cloud-environment Development
+
+xcrun devicectl device install app --device YOUR_DEVICE_ID dist/ios/ADV.app
+```
+
+The packaging tool checks bundle IDs, profile expiration, common team, App Group,
+CloudKit container, and environment before building a configured bundle. It embeds
+profiles and signs the extension before the app. iPhone development installs also
+require Developer Mode. macOS cloud builds use embedded provisioning profiles
+and sandbox/network entitlements.
+
+Sync uses the default zone of the **private** CloudKit database and a single
+`ADVSettings` record named `personal-rules-v1`, with a `rules` Bytes field. A first
+successful development save creates the record/schema. No query index is needed.
+For production builds, deploy the schema using CloudKit Console and obtain matching
+Production profiles before using `--cloud-environment Production`. Development
+and Production databases are separate and do not exchange rules.
+
+Cloud saves use optimistic concurrency; conflicts re-fetch and merge rules by
+stable ID and latest modification time. Deletion markers prevent offline devices
+from restoring removed rules. Equal timestamps resolve deterministically with
+deletion taking priority. Device-clock skew can affect conflict order; keep clocks
+automatic. Tombstones are retained, and the complete collection is limited to
+500 KB. There are no push subscriptions, background sync guarantees, or automatic
+uploads from Safari while ADV remains closed. Errors are shown in the native app.
+
+CloudKit runtime account access and macOS↔iPhone exchange have **not** been tested:
+no paid developer signing/container is configured in the current environment.
+The code compiles for both platforms; mocked migration and conflict tests do not
+prove live iCloud operation. The default build reports that iCloud is unconfigured
+and disables its sync button.
+
+## iOS compile checks and simulator
+
+```sh
+python3 Tools/package.py ios
+python3 Tools/package.py simulator
+xcrun simctl install booted dist/simulator/ADV.app
+xcrun simctl launch booted local.adv
+```
+
+The default device bundle is **unsigned**, for compile validation only, and cannot
+be installed on an iPhone. Device installation/runtime remains unverified.
+
+## Verification and filter maintenance
+
+```sh
+python3 Tools/demo_server.py --verify \
+  --rules dist/macos/ADV.app/Contents/PlugIns/ADV.appex/Contents/Resources/networkRules.json \
+  --youtube-resources dist/macos/ADV.app/Contents/PlugIns/ADV.appex/Contents/Resources
+```
+
+The local runner decodes the packaged DNR JSON and translates this project's
+simple block-only rules into WebKit test rules. It compares filtered/unfiltered
+pages and actual request counts. This verifies network matching behavior, not
+Safari's installation of the DNR ruleset. It also executes the packaged scripts
+and stylesheets for simulated YouTube, personal/cosmetic-filter,
+and global-source checks. Browser APIs, native responses, and media
+states are mocked in fixtures. Source tests cover persistence, restoration,
+hostname boundaries, deduplication, and rollback on installation/storage failure.
+Actual DNR activation and site permissions require checking the enabled extension
+in Safari; live iCloud and iPhone runtime remain unverified.
+
+Swift Testing covers network-rule format/scope, domain boundaries, offline
+merge/deletion convergence, and concurrent shared-file persistence. The packager
+builds only ADVApp and ADVWebExtension, then checks signatures with
+`codesign --verify --deep --strict`. The iOS cross-build may emit
+`-Wincompatible-sysroot`; its linker uses the iPhone SDK and the binary targets iOS.
+
+To try the built-in filter fixture manually, run `python3 Tools/demo_server.py`
+and open <http://127.0.0.1:8765/>. The server binds only to localhost. Built-in filters
+hide the ad slot and block its script/image; normal content remains visible.
+
+Built-in domains live in `Sources/BlockerCore/Rules.swift`; YouTube logic and CSS
+live in `WebExtension/`. Repackage and reopen ADV after editing source files, then
+reload the extension and Safari pages. Personal filters added through the popup do
+not require a source edit or rebuild. EasyList subscriptions and per-site disabling
+of built-in rules are not implemented.
+
+## References
+
+- [Apple: Blocking content with a Safari Web Extension](https://developer.apple.com/documentation/safariservices/blocking-content-with-your-safari-web-extension)
+- [Apple: Creating a Safari web extension](https://developer.apple.com/documentation/safariservices/creating-a-safari-web-extension)
+- [Apple: Managing Safari web extension permissions](https://developer.apple.com/documentation/safariservices/managing-safari-web-extension-permissions)
+- [Apple: Native messaging](https://developer.apple.com/documentation/safariservices/messaging-between-the-app-and-javascript-in-a-safari-web-extension)
+- [Apple: Enabling CloudKit](https://developer.apple.com/documentation/cloudkit/enabling-cloudkit-in-your-app)
+- [Apple: Private-database sample](https://github.com/apple/sample-cloudkit-privatedb)
+- [Apple: Development and production testing](https://developer.apple.com/library/archive/documentation/DataManagement/Conceptual/CloudKitQuickStart/TestingYourApp/TestingYourApp.html)
+
+O'Reilly catalog discovery (metadata only; no book body was inspected):
+
+- [Building Browser Extensions](https://learning.oreilly.com/library/view/-/9798868815942/),
+  Matt Frisbie, Apress, 2025-08-01, book. Relevant to extension architecture.
+- [App Development Using iOS iCloud: Build High-Performance Apps with Swift](https://learning.oreilly.com/library/view/-/9798868809446/),
+  Shantanu Baruah and Shaurya Baruah, Apress, 2024-11-08, book. Relevant to iCloud
+  storage architecture. Exact API behavior was checked against Apple sources and
+  the installed Xcode SDK, rather than inferred from catalog metadata.
