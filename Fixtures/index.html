@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADV Filter Test</title>
+<style>
+  body { font: 17px system-ui; margin: 40px auto; padding: 0 20px; max-width: 700px; line-height: 1.7; }
+  #normal-content { padding: 20px; border: 2px solid #269b6f; border-radius: 12px; }
+  #adv-demo-ad { background: #ffe0e0; padding: 20px; margin: 20px 0; border-radius: 12px; }
+  #results { white-space: pre-line; padding: 20px; background: #eee; border-radius: 12px; }
+</style>
+<h1>ADV Filter Test</h1>
+<p>Enable or disable ADV in Safari, then reload this page.</p>
+<div id="normal-content">Normal content: this should always remain visible.</div>
+<div id="adv-demo-ad">Test ad slot: this red box should disappear when ADV is enabled.</div>
+<p>Test ad image: <img id="ad-image" src="/adv-demo/blocked.svg" alt="Image to block" width="64" height="32"></p>
+<script src="/content/control.js"></script>
+<script src="/adv-demo/blocked.js"></script>
+<div id="results">Checking…</div>
+<script>
+  window.addEventListener('load', () => {
+    const normal = window.normalScriptLoaded === true;
+    const blocked = window.adScriptLoaded !== true;
+    const imageBlocked = document.querySelector('#ad-image').naturalWidth === 0;
+    const hidden = getComputedStyle(document.querySelector('#adv-demo-ad')).display === 'none';
+    document.querySelector('#results').textContent = [
+      `Normal script: ${normal ? 'working' : 'failed'}`,
+      `Ad script: ${blocked ? 'blocked' : 'loaded'}`,
+      `Ad image: ${imageBlocked ? 'blocked' : 'loaded'}`,
+      `Ad slot: ${hidden ? 'hidden' : 'visible'}`,
+      normal && blocked && imageBlocked && hidden ? '✓ ADV content rules are working.' : 'Ads load when ADV is disabled.'
+    ].join('\n');
+  });
+</script>
+</html>
