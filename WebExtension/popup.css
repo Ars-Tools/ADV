@@ -1,0 +1,36 @@
+:root { color-scheme: light; font: 14px -apple-system, BlinkMacSystemFont, Helvetica, sans-serif; --paper: #f6f2e9; --ink: #171714; --red: #cc261a; --blue: #1f40a8; --yellow: #f7c229; color: var(--ink); background: var(--paper); }
+* { box-sizing: border-box; }
+/* Safari measures this document to size its popover. A viewport-based maximum
+   can shrink the document to the initial measurement viewport indefinitely. */
+html { width: 340px; min-width: 340px; height: 600px; overflow: hidden; }
+body { width: 340px; height: 600px; overflow-y: auto; padding: 22px; margin: 0; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.eyebrow { font: bold 9px ui-monospace, monospace; letter-spacing: 1.5px; margin: 0 0 6px; }
+h1 { margin: 0; font-size: 60px; letter-spacing: -4px; line-height: 1; font-weight: 900; }
+.tagline { font-size: 17px; font-weight: 600; margin: 16px 0; }
+.mark { width: 70px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; flex-shrink: 0; }
+.mark i { display: block; height: 32px; background: var(--blue); }
+.mark i:first-child { border-radius: 50%; background: var(--red); }
+.mark i:last-child { grid-column: 1 / -1; height: 43px; background: var(--yellow); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+#site { background: var(--yellow); border: 2px solid var(--ink); padding: 10px; font: bold 12px ui-monospace, monospace; margin: 0 0 20px; }
+section { border-top: 2px solid var(--ink); padding: 16px 0 8px; }
+h2 { display: flex; align-items: center; gap: 10px; margin: 0 0 16px; font-size: 17px; }
+.index { display: inline-grid; place-items: center; width: 26px; height: 26px; font: bold 10px ui-monospace, monospace; color: white; }
+.red { background: var(--red); } .blue { background: var(--blue); }
+button { font-size: 13px; font-weight: 700; font-family: inherit; padding: 10px 12px; min-height: 44px; border: 2px solid var(--ink); border-radius: 0; background: var(--paper); color: var(--ink); cursor: pointer; }
+button:hover:not(:disabled) { background: var(--yellow); }
+button:active:not(:disabled) { transform: translateY(1px); }
+button:disabled { cursor: default; color: #55524a; border-color: #aaa69e; background: var(--paper); }
+:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+#pick { width: 100%; background: var(--ink); color: var(--paper); }
+#pick:hover:not(:disabled) { background: var(--blue); }
+#pick:disabled { color: #55524a; background: var(--paper); }
+.hint { color: #55524a; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+#status { border-left: 4px solid var(--blue); padding-left: 10px; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+#site, code { overflow-wrap: anywhere; } ul { padding: 0; list-style: none; max-height: 230px; overflow: auto; font-size: 13px; }
+label { display: block; font-size: 12px; font-weight: 700; margin-bottom: 8px; }
+textarea { width: 100%; min-width: 0; resize: vertical; border: 2px solid var(--ink); border-radius: 0; padding: 10px; background: var(--paper); color: var(--ink); font: 12px ui-monospace, monospace; }
+#source-host { width:100%; padding:10px; margin-bottom:8px; border:2px solid var(--ink); border-radius:0; background:var(--paper); color:var(--ink); font:12px ui-monospace,monospace; }
+#block-source { width:100%; }
+#save-bulk { width: 100%; background: var(--blue); color: white; }
+li { border-top: 1px solid #aaa69e; padding: 12px 0; } li button { display: block; margin-top: 8px; }
