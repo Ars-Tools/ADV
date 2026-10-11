@@ -1,0 +1,205 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>ADV personal filter checks</title>
+<body><h1>Personal filter fixture</h1><div id="adv-demo-ad">Fixture ad</div><div data-ad-slot="fixture">Built-in ad slot</div><div id="unwanted">Unwanted content</div><div id="keep">Keep this content</div>
+<script>
+Object.defineProperty(document, "hidden", {configurable:true, get:()=>false});
+const handlers = [];
+let saved = {};
+let shared = false;
+let remote = [];
+let nativeFailure = false;
+let dynamicRules = [{id:42, priority:1, action:{type:'allow'}, condition:{urlFilter:'unrelated'}}];
+let failSourceUpdate = false;
+let failSourceSave = false;
+const clone = value => JSON.parse(JSON.stringify(value));
+window.browser = {
+  storage: {local: {
+    async get() { return clone(saved); },
+    async set(value) {
+      if (failSourceSave && 'globalBlockedSourcesV1' in value) { failSourceSave = false; throw new Error('Storage unavailable'); }
+      Object.assign(saved, clone(value));
+    }
+  }},
+  declarativeNetRequest: {
+    async getDynamicRules() { return clone(dynamicRules); },
+    async updateDynamicRules({removeRuleIds, addRules}) {
+      if (failSourceUpdate) { failSourceUpdate = false; throw new Error('DNR unavailable'); }
+      dynamicRules = [...dynamicRules.filter(rule=>!removeRuleIds.includes(rule.id)), ...clone(addRules)];
+    },
+    async getEnabledRulesets() { return ['advertising']; }
+  },
+  runtime: {
+    onMessage: {addListener(handler) { handlers.push(handler); }},
+    async sendNativeMessage(application, message) {
+      if (nativeFailure) throw new Error("Native unavailable");
+      if (!shared) return {shared:false, rules:[]};
+      if (message.operation === "merge") {
+        const merged = new Map(remote.map(rule=>[rule.id,rule]));
+        for (const rule of message.rules) merged.set(rule.id,clone(rule));
+        remote = [...merged.values()];
+      }
+      return {shared:true, rules:clone(remote)};
+    },
+    async sendMessage(message) { return await handlers[0](message, {tab:{id:1,url:location.href},url:location.href}); }
+  },
+  tabs: {
+    async query() { return [{id:1}]; },
+    async sendMessage(id,message) { for (const handler of handlers.slice(1)) handler(message); }
+  }
+};
+const attach = Element.prototype.attachShadow;
+let pickerRoot;
+Element.prototype.attachShadow = function(options) { pickerRoot = attach.call(this, options); return pickerRoot; };
+window.runADVPersonalTests = async function(personalScript, pickerScript, backgroundScript) {
+  const results = [];
+  function check(condition, name) { if (!condition) throw new Error(name); results.push(name); }
+  async function wait(condition) {
+    for (let i=0;i<100;i++) { if (condition()) return; await new Promise(resolve=>setTimeout(resolve,20)); }
+    throw new Error("Timed out waiting for rule application");
+  }
+  const unwanted = document.getElementById("unwanted");
+  const keep = document.getElementById("keep");
+  (0,eval)(personalScript);
+  await wait(()=>getComputedStyle(document.getElementById("adv-demo-ad")).display === "none");
+  check(getComputedStyle(document.querySelector("[data-ad-slot]")).display === "none", "Built-in cosmetic filters work within the single Web Extension");
+  (0,eval)(pickerScript);
+  unwanted.click();
+  check(pickerRoot.getElementById("selector").value === "#unwanted", "Picker generates a stable selector");
+  pickerRoot.getElementById("save").click();
+  await wait(()=>getComputedStyle(unwanted).display === "none");
+  check(getComputedStyle(keep).display !== "none", "Saving hides selected content and preserves normal content");
+  let state = await browser.runtime.sendMessage({operation:"list"});
+  check(state.rules.length === 1 && !state.shared, "Unsigned mode persists a local rule");
+  check(saved.personalRulesV1[0].selector === "#unwanted", "Rule survives background storage reload");
+  await browser.runtime.sendMessage({operation:"remove",id:state.rules[0].id});
+  await wait(()=>getComputedStyle(unwanted).display !== "none");
+  check(saved.personalRulesV1[0].deleted, "Removing restores content and retains a tombstone");
+  const different = await browser.runtime.sendMessage({operation:"add",host:"other.example.com",selector:"#keep"});
+  check(!!different.error, "Content script cannot add a rule for another site");
+  const injection = await browser.runtime.sendMessage({operation:"add",host:location.hostname,selector:"x}body{display:none"});
+  check(!!injection.error, "Rejects stylesheet injection");
+  shared = true;
+  state = await browser.runtime.sendMessage({operation:"list"});
+  check(state.shared && remote[0].deleted, "Signing migration preserves local deletion history");
+  remote.push({id:crypto.randomUUID(),host:location.hostname,selector:"#keep",modified:Date.now(),deleted:false});
+  await browser.runtime.sendMessage({operation:"list"});
+  await browser.tabs.sendMessage(1,{operation:"refresh"});
+  await wait(()=>getComputedStyle(keep).display === "none");
+  check(getComputedStyle(unwanted).display !== "none", "Rules arriving through native storage apply on the page");
+  nativeFailure = true;
+  const failure = await browser.runtime.sendMessage({operation:"add",host:location.hostname,selector:"#unwanted"});
+  check(!!failure.error && saved.personalRulesV1.length === 2, "Shared mode reports native failure instead of silently forking local rules");
+  nativeFailure = false;
+  (0,eval)(pickerScript);
+  const input = pickerRoot.getElementById("selector");
+  unwanted.click(); input.value = "body"; input.dispatchEvent(new Event("input"));
+  check(pickerRoot.getElementById("save").disabled, "Picker rejects hiding the entire page");
+  pickerRoot.getElementById("cancel").click();
+  check(!globalThis.__advCancelPicker, "Cancel cleans up the picker");
+  shared = false; saved.sharedActivated = false;
+  const batch = await browser.runtime.sendMessage({operation:"addMany",host:location.hostname,selectors:[".bulk-one", ".bulk-two", ".bulk-one"]});
+  check(!batch.error && batch.added === 2, "Bulk registration saves multiple selectors and skips duplicates");
+  const repeated = await browser.runtime.sendMessage({operation:"addMany",host:location.hostname,selectors:[".bulk-one", ".bulk-two"]});
+  check(repeated.added === 0, "Repeated bulk registration preserves existing records");
+  const beforeInvalid = JSON.stringify(saved);
+  const invalidBatch = await browser.runtime.sendMessage({operation:"addMany",host:location.hostname,selectors:[".valid-batch", "x}body{display:none"]});
+  check(!!invalidBatch.error && JSON.stringify(saved) === beforeInvalid, "Invalid bulk registration commits no partial rules");
+  const wrongSite = await browser.runtime.sendMessage({operation:"addMany",host:"other.example.com",selectors:[".bulk-one"]});
+  check(!!wrongSite.error, "Bulk registration rejects a content script's different site");
+  (0,eval)(`(()=>{${backgroundScript}\n})()`);
+  handlers[0] = handlers.pop();
+  const persisted = await browser.runtime.sendMessage({operation:"list"});
+  check(persisted.rules.some(rule=>rule.selector === ".bulk-two"), "Bulk rules survive background process recreation from persistent storage");
+  shared = true;
+  await browser.runtime.sendMessage({operation:"list"});
+  const sharedBatch = await browser.runtime.sendMessage({operation:"addMany",host:location.hostname,selectors:[".shared-one", ".shared-two"]});
+  check(sharedBatch.added === 2 && remote.some(rule=>rule.selector === ".shared-two"), "Shared storage receives the bulk batch in one merge");
+  check(remote.some(rule=>rule.deleted), "Bulk migration preserves existing deletion history");
+  const first = document.createElement('div'); first.id = 'multi-first'; first.textContent = 'First ad';
+  const second = document.createElement('div'); second.id = 'multi-second'; second.textContent = 'Second ad';
+  document.body.append(first, second);
+  (0,eval)(pickerScript);
+  first.click(); second.click();
+  check(pickerRoot.querySelectorAll('#selected li').length === 2, "Picker selects several page elements without closing");
+  first.click();
+  check(pickerRoot.querySelectorAll('#selected li').length === 1, "Clicking a selected element again deselects it");
+  first.click();
+  pickerRoot.querySelector('#selected button').click();
+  check(pickerRoot.querySelectorAll('#selected li').length === 1, "Picker review list removes an individual selection");
+  second.click();
+  const editor = pickerRoot.getElementById('selector');
+  editor.value = 'body'; editor.dispatchEvent(new Event('input'));
+  check(pickerRoot.getElementById('save').disabled, "An invalid edited selection disables saving the entire selection");
+  editor.value = '#multi-second'; editor.dispatchEvent(new Event('input'));
+  pickerRoot.getElementById('save').click();
+  await wait(()=>getComputedStyle(first).display === 'none' && getComputedStyle(second).display === 'none');
+  check(!globalThis.__advCancelPicker, "Saving the multi-element selection hides both elements and closes the picker");
+  check(saved.personalRulesV1.filter(rule=>!rule.deleted && ['#multi-first','#multi-second'].includes(rule.selector)).length === 2, "All picked elements are persisted together");
+  const rotating = document.createElement('section');
+  rotating.id = 'ad-a1b2c3d4e5f6'; rotating.className = 'advertisement css-a1b2c3d4e5f6';
+  document.body.append(rotating);
+  (0,eval)(pickerScript); rotating.click();
+  check(pickerRoot.getElementById('selector').value === 'section.advertisement', 'Picker avoids hash IDs and classes in favor of a stable class');
+  pickerRoot.getElementById('save').click();
+  await wait(()=>getComputedStyle(rotating).display === 'none');
+  rotating.remove();
+  const replacement = document.createElement('section');
+  replacement.id = 'ad-f6e5d4c3b2a1'; replacement.className = 'advertisement css-f6e5d4c3b2a1';
+  document.body.append(replacement);
+  check(getComputedStyle(replacement).display === 'none', 'Saved CSS hides dynamically inserted ads with different hash IDs');
+  const marked = document.createElement('ins'); marked.id = 'abcdef123456'; marked.dataset.adSlot = '123456789';
+  document.body.append(marked);
+  (0,eval)(pickerScript); marked.click();
+  check(pickerRoot.getElementById('selector').value === 'ins[data-ad-slot]', 'Picker uses ad attribute presence instead of rotating IDs or slot values');
+  pickerRoot.getElementById('cancel').click();
+  document.querySelectorAll('style').forEach(style=>style.remove());
+  delete globalThis.__advPersonalLoaded;
+  (0,eval)(personalScript);
+  await wait(()=>getComputedStyle(replacement).display === 'none');
+  check(getComputedStyle(first).display === 'none', 'Recreated page content script restores saved cosmetic filters from storage');
+  return JSON.stringify(results);
+};
+window.runADVSourceTests = async function(pickerScript, backgroundScript) {
+  const results = [];
+  function check(condition, name) { if (!condition) throw new Error(name); results.push(name); }
+  let response = await browser.runtime.sendMessage({operation:'sourceAdd', pageHost:location.hostname, hosts:['ADS.EXAMPLE.TEST', 'ads.example.test']});
+  check(response.added === 1 && response.hosts[0] === 'ads.example.test', 'Source blocks normalize and deduplicate hosts');
+  const rule = dynamicRules.find(rule=>rule.id >= 100000);
+  const pattern = new RegExp(rule.condition.regexFilter);
+  check(pattern.test('https://ads.example.test/banner.png') && pattern.test('https://cdn.ads.example.test:8443/ad.js'), 'Source rule matches the provider host and its subdomains');
+  check(!pattern.test('https://ads.example.test.evil.test/x') && !pattern.test('https://badads.example.test/x'), 'Source rule enforces hostname boundaries');
+  check(!rule.condition.initiatorDomains && !rule.condition.resourceTypes.includes('main_frame') && rule.condition.resourceTypes.includes('sub_frame'), 'Source rule blocks ad resources across sites while allowing top-level navigation');
+  check(dynamicRules.some(rule=>rule.id === 42), 'Source updates preserve unrelated dynamic rules');
+  const storedBefore = JSON.stringify(saved);
+  const rulesBefore = JSON.stringify(dynamicRules);
+  response = await browser.runtime.sendMessage({operation:'sourceAdd', pageHost:location.hostname, hosts:['other.ads.test', 'https://invalid.test/path']});
+  check(!!response.error && JSON.stringify(saved) === storedBefore && JSON.stringify(dynamicRules) === rulesBefore, 'Invalid source batch changes neither storage nor active rules');
+  response = await browser.runtime.sendMessage({operation:'sourceAdd', pageHost:'other.example.test', hosts:['other.ads.test']});
+  check(!!response.error, 'Content scripts cannot spoof the page requesting a source block');
+  failSourceUpdate = true;
+  response = await browser.runtime.sendMessage({operation:'sourceAdd', pageHost:location.hostname, hosts:['other.ads.test']});
+  check(!!response.error && JSON.stringify(saved) === storedBefore, 'DNR failure does not report a source as saved');
+  failSourceSave = true;
+  response = await browser.runtime.sendMessage({operation:'sourceAdd', pageHost:location.hostname, hosts:['other.ads.test']});
+  check(!!response.error && JSON.stringify(dynamicRules) === rulesBefore, 'Storage failure restores the previous active source rules');
+  dynamicRules = dynamicRules.filter(rule=>rule.id < 100000);
+  (0,eval)(`(()=>{${backgroundScript}\n})()`); handlers[0] = handlers.pop();
+  response = await browser.runtime.sendMessage({operation:'sourceList'});
+  check(response.hosts.includes('ads.example.test') && dynamicRules.some(rule=>rule.id >= 100000), 'Source blocks are restored from persistent storage after background recreation');
+  const link = document.createElement('a'); link.href = 'https://www.dmm.co.jp/landing';
+  const image = document.createElement('img'); image.id = 'provider-image';
+  Object.defineProperty(image, 'currentSrc', {value:'https://picked.ads.test/banner.png'});
+  link.append(image); document.body.append(link);
+  (0,eval)(pickerScript); image.click();
+  const candidate = pickerRoot.querySelector('input[data-host="picked.ads.test"]');
+  check(!!candidate && !pickerRoot.querySelector('input[data-host="www.dmm.co.jp"]'), 'Picker suggests the image delivery host instead of the advertiser landing page');
+  check(!candidate.checked && pickerRoot.getElementById('block-sources').disabled, 'Provider blocks require an explicit source selection');
+  const personalBefore = JSON.stringify(saved.personalRulesV1);
+  candidate.click(); pickerRoot.getElementById('block-sources').click();
+  response = await browser.runtime.sendMessage({operation:'sourceList'});
+  check(response.hosts.includes('picked.ads.test') && JSON.stringify(saved.personalRulesV1) === personalBefore, 'Picker persists a global provider block without changing cosmetic filters');
+  pickerRoot.getElementById('cancel').click();
+  response = await browser.runtime.sendMessage({operation:'sourceRemove', pageHost:location.hostname, host:'picked.ads.test'});
+  check(!response.hosts.includes('picked.ads.test') && dynamicRules.filter(rule=>rule.id>=100000).length === 1, 'Unblocking removes the global source rule');
+  return JSON.stringify(results);
+};
+</script></body></html>
