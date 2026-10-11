@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>ADV YouTube script tests</title>
+<style>
+body { font: 16px system-ui; padding: 24px; }
+.ytp-ad-text { width: 80px; height: 24px; }
+button { width: 100px; height: 30px; }
+</style>
+<h1>YouTube player simulation</h1>
+<p>This page tests script behavior with simulated player states, not live YouTube advertising.</p>
+<ytd-ad-slot-renderer id="display-ad">Display ad fixture</ytd-ad-slot-renderer>
+<div id="fixture"></div>
+<script>
+window.runADVYouTubeTests = async () => {
+    // Offscreen WKWebView documents are hidden. Model foreground/background
+    // states explicitly alongside the mock media properties used below.
+    let hidden = false;
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+    const results = [];
+    const wait = () => new Promise(resolve => setTimeout(resolve, 650));
+    const check = (condition, name) => { if (!condition) throw new Error(name); results.push(name); };
+    const fixture = document.querySelector('#fixture');
+    function makePlayer() {
+        fixture.innerHTML = '<div id="movie_player" class="html5-video-player"><video></video><span class="ytp-ad-text" hidden>Ad</span></div>';
+        const player = fixture.firstElementChild;
+        const video = player.querySelector('video');
+        Object.defineProperties(video, {
+            duration: { value: 120, writable: true, configurable: true },
+            currentTime: { value: 42, writable: true, configurable: true },
+            currentSrc: { value: 'main-video', writable: true, configurable: true },
+            muted: { value: false, writable: true, configurable: true },
+            playbackRate: { value: 1.25, writable: true, configurable: true }
+        });
+        return { player, video, indicator: player.querySelector('.ytp-ad-text') };
+    }
+    const ad = (player, indicator) => { indicator.hidden = false; player.classList.add('ad-showing'); };
+    let { player, video, indicator } = makePlayer();
+    await wait();
+    check(video.currentTime === 42 && video.playbackRate === 1.25 && !video.muted, 'Normal playback is untouched');
+    check(getComputedStyle(document.querySelector('#display-ad')).display === 'none', 'YouTube display ads are hidden');
+
+    let clicks = 0;
+    const skip = document.createElement('button');
+    skip.className = 'ytp-skip-ad-button'; skip.textContent = 'Skip ad';
+    skip.onclick = () => { clicks++; player.classList.remove('ad-showing'); indicator.hidden = true; };
+    player.append(skip); ad(player, indicator);
+    await wait();
+    check(clicks === 1 && video.currentTime === 42 && !video.muted,
+        `Visible skip button is clicked without seeking normal content (clicks=${clicks}, time=${video.currentTime}, muted=${video.muted}, hidden=${document.hidden})`);
+    skip.remove();
+
+    video.duration = 20; video.currentTime = 0; video.currentSrc = 'ad-video';
+    ad(player, indicator); await wait();
+    check(video.currentTime === 20 && video.muted, 'Confirmed finite ad advances to its end');
+    player.classList.remove('ad-showing'); indicator.hidden = true; await wait();
+    check(!video.muted && video.playbackRate === 1.25, 'Mute and playback speed are restored after an ad');
+
+    video.duration = NaN; video.currentTime = 2; video.currentSrc = 'unknown-ad';
+    ad(player, indicator); await wait();
+    check(video.currentTime === 2 && video.playbackRate === 16 && video.muted, 'Unknown ad timeline is accelerated without seeking');
+    video.currentSrc = 'new-main-video'; video.duration = 120; video.currentTime = 7;
+    await wait(); await wait();
+    check(video.currentTime === 7 && video.playbackRate === 1.25 && !video.muted, 'A changed media source is protected while ad UI is stale');
+    player.classList.remove('ad-showing'); indicator.hidden = true; await wait();
+    player.classList.add('ad-showing'); await wait();
+    check(video.currentTime === 7 && !video.muted, 'An ad class without visible ad UI does not alter playback');
+    player.classList.remove('ad-showing'); await wait();
+
+    ({ player, video, indicator } = makePlayer());
+    video.duration = 10; video.currentTime = 0; video.currentSrc = 'new-ad';
+    ad(player, indicator); await wait();
+    // A newly observed source is protected on the first update. Wait for the
+    // subsequent timer tick rather than racing its 500ms cadence offscreen.
+    for (let i = 0; i < 20 && video.currentTime !== 10; i++) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    check(video.currentTime === 10, 'A replacement player is handled after single-page navigation');
+    hidden = true;
+    video.currentTime = 3;
+    document.dispatchEvent(new Event('visibilitychange')); await wait();
+    check(video.currentTime === 3 && !video.muted && video.playbackRate === 1.25,
+        'Background tabs restore playback settings and stop modifying media');
+    hidden = false;
+    player.classList.remove('ad-showing'); indicator.hidden = true; await wait();
+    return JSON.stringify(results);
+};
+</script>
+</html>
