@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "ADV",
+  "version": "0.4.0",
+  "description": "Block advertising requests, pick unwanted page elements, and reduce YouTube ads.",
+  "permissions": ["activeTab", "scripting", "storage", "nativeMessaging", "declarativeNetRequest"],
+  "declarative_net_request": {"rule_resources": [{"id": "advertising", "enabled": true, "path": "networkRules.json"}]},
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "background": {"scripts": ["background.js"], "type": "module"},
+  "action": {"default_title": "ADV", "default_popup": "popup.html", "default_icon": "toolbar.svg"},
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["personal.js"],
+      "css": ["builtin.css"],
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "https://www.youtube.com/*",
+        "https://m.youtube.com/*",
+        "https://youtube.com/*",
+        "https://www.youtube-nocookie.com/*"
+      ],
+      "js": ["youtube.js"],
+      "css": ["youtube.css"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ]
+}
