@@ -41,13 +41,11 @@ li { border-top: 1px solid #aaa69e; padding: 12px 0; } li button { display: bloc
 #help button { margin:8px 8px 0 0; }
 #help p { font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
 .help-question { border-left:4px solid var(--blue); padding-left:10px; }
-#help-candidates { max-height:360px; }
 /* The popup stays compact; the same document becomes a responsive workspace tab. */
 #open-workspace { width:100%; margin:0 0 12px; }
 .system-status { margin-bottom:16px; }
 summary { cursor:pointer; font-weight:700; font-size:12px; padding:8px 0; }
 summary:focus-visible { outline:none; box-shadow:inset 0 -3px var(--blue); }
-#help summary { font-size:12px; }
 #workspace { display:flex; flex-direction:column; gap:16px; }
 .panel { min-width:0; padding:16px 0; }
 .intro { font-size:13px; line-height:1.5; }
