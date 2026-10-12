@@ -20,5 +20,14 @@
 <label for="source-host">Advertising source hostname</label><input id="source-host" placeholder="ads.example.com" spellcheck="false" autocapitalize="none">
 <button id="block-source">Block source everywhere</button><p id="source-status" class="hint" role="status"></p><ul id="blocked-sources"></ul>
 <p class="hint">Source rules persist in this Safari profile. They do not sync with iCloud yet. Reload pages after changing source rules.</p></section>
+<details id="help"><summary>Rule help · optional</summary>
+<p class="hint">Read-only investigation of this document. Explicit rules stay in the normal editor. No automatic saving or deletion. Frames and Shadow DOM are not inspected.</p>
+<label for="help-selector">Element or saved CSS selector</label><input id="help-selector" placeholder=".advertisement" spellcheck="false">
+<label for="help-html">Or paste an HTML fragment (optional)</label><textarea id="help-html" rows="3" maxlength="10000" spellcheck="false" placeholder="Paste the outer advertising container"></textarea>
+<button id="help-inspect">Inspect rules and selection</button>
+<label for="help-question">Ask the guide</label><textarea id="help-question" rows="2" maxlength="1500" placeholder="Can I hide the whole container using a stable condition?"></textarea>
+<button id="help-ask">Ask on-device guide</button><p id="help-status" class="hint" role="status">Inspection works without Apple Intelligence. Conversation requires a supported device running macOS or iOS 26.</p>
+<div id="help-conversation" aria-live="polite"></div><ul id="help-findings" aria-label="Rule diagnostics"></ul><ul id="help-candidates" aria-label="Candidate selectors"></ul>
+</details>
 <p class="hint">Cloud sync runs when you open the signed ADV app. Reload pages after syncing.</p>
-<script src="popup.js"></script></body></html>
+<script src="help.js"></script><script src="popup.js"></script></body></html>
