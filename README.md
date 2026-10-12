@@ -113,10 +113,12 @@ tab ID; changing active tabs does not silently retarget an investigation. To use
 new site, open ADV from that site. Returning from the picker can load a one-time
 selection handoff without closing the workspace.
 
-For example, ask **Hide the FANZA ads on this page.** Foundation Models extracts
-search terms, then ADV inspects up to 500 links, image descriptions, and iframe URLs
-in the top document. The model may include related brands/domains such as DMM or
-DMM Games. Search scope, candidate evidence, match counts, and exact CSS conditions
+For example, select an ad with the picker, choose **Help with last selection**,
+then ask **Help me hide the ad I selected.** The guide explains DOM-backed candidate
+conditions for that selection. If you name a brand or domain instead, Foundation
+Models extracts search terms and ADV inspects up to 500 links, image descriptions,
+and iframe URLs in the top document. The model may include related brands or
+domains in its proposals. Search scope, candidate evidence, match counts, and exact CSS conditions
 remain visible. Broadening is allowed as a proposal; you decide whether to apply
 it, and individual saved rules can be removed afterwards.
 
@@ -224,7 +226,7 @@ Select ad elements with **Pick elements to hide**. The picker lists source hosts
 found in selected images, iframe URLs, media URLs, and background images. Check
 the advertising hosts you want to block, then select **Block sources everywhere**.
 No source is selected automatically. The advertiser's destination link is not
-treated as the delivery source: a DMM/FANZA link alone does not identify the host
+treated as the delivery source: an advertiser landing-page link alone does not identify the host
 serving that advertisement.
 
 Source blocks apply to that exact host and its subdomains across websites where
