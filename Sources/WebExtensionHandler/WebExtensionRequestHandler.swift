@@ -1,6 +1,7 @@
 import Foundation
 import BlockerCore
 import SafariServices
+import RuleAssistance
 
 @objc(ADVWebExtensionRequestHandler)
 public final class WebExtensionRequestHandler: NSObject, NSExtensionRequestHandling {
@@ -10,6 +11,20 @@ public final class WebExtensionRequestHandler: NSObject, NSExtensionRequestHandl
             guard let input = context.inputItems.first as? NSExtensionItem,
                   let message = input.userInfo?[SFExtensionMessageKey] as? [String: Any],
                   let operation = message["operation"] as? String else { throw PersonalRuleError.invalidRule }
+            if operation == "assist" {
+                let data = try JSONSerialization.data(withJSONObject: message["request"] ?? [:])
+                let request = try JSONDecoder().decode(AssistanceRequest.self, from: data)
+                let completion = AssistanceCompletion(context: context)
+                Task { @MainActor in
+                    let response: [String: Any]
+                    do {
+                        let report = try await FoundationModelsGuide.respond(to: request)
+                        response = try JSONSerialization.jsonObject(with: JSONEncoder().encode(report)) as! [String: Any]
+                    } catch { response = ["error": error.localizedDescription] }
+                    completion.reply(response)
+                }
+                return
+            }
             guard let store = PersonalRuleStore.configured() else {
                 let item = NSExtensionItem()
                 item.userInfo = [SFExtensionMessageKey: ["shared": false, "rules": []] as [String: Any]]
@@ -35,6 +50,17 @@ public final class WebExtensionRequestHandler: NSObject, NSExtensionRequestHandl
         } catch { reply = ["error": error.localizedDescription] }
         let item = NSExtensionItem()
         item.userInfo = [SFExtensionMessageKey: reply]
+        context.completeRequest(returningItems: [item], completionHandler: nil)
+    }
+}
+
+// Ownership is transferred to one asynchronous task; the request context is
+// never accessed by the synchronous handler again on this branch.
+private struct AssistanceCompletion: @unchecked Sendable {
+    let context: NSExtensionContext
+    func reply(_ response: [String: Any]) {
+        let item = NSExtensionItem()
+        item.userInfo = [SFExtensionMessageKey: response]
         context.completeRequest(returningItems: [item], completionHandler: nil)
     }
 }
