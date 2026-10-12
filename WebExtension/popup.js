@@ -85,12 +85,13 @@ async function render() {
 pick.onclick = async () => {
     pick.disabled = true;
     try {
+        if (!Number.isInteger(tab?.id)) throw new Error("No active Safari tab is available. Open a web page and reopen ADV.");
         await browser.scripting.executeScript({target: {tabId: tab.id}, files: ["personal.js", "picker.js"]});
         window.close();
     } catch (error) {
         status.textContent = `Could not start picker: ${error.message}. Allow ADV on this site in Safari.`;
-        pick.disabled = false;
-        bulk.disabled = false;
+        pick.disabled = !host || !Number.isInteger(tab?.id);
+        bulk.disabled = !host;
     }
 };
 (async () => {
@@ -101,12 +102,13 @@ pick.onclick = async () => {
             : (network.enabled ? "Built-in network filters: enabled." : "Built-in network filters: not enabled.");
         await renderSources();
         [tab] = await browser.tabs.query({active: true, currentWindow: true});
-        await browser.tabs.sendMessage(tab.id, {operation:'activityCheck'}).catch(() => {});
-        const activity = await browser.runtime.sendMessage({operation:'toolbarStatus', tabId:tab.id});
-        document.getElementById('activity').textContent = activity.error ? `Page activity: ${activity.error}`
-            : (activity.blocked ? 'Blocking detected on this page · lid closed.'
-                : (activity.networkKnown ? 'No blocking detected on this page · lid open.'
-                    : 'No blocking observed · network activity unavailable.'));
+        if (!Number.isInteger(tab?.id)) [tab] = await browser.tabs.query({active: true, lastFocusedWindow: true});
+        if (!Number.isInteger(tab?.id)) {
+            document.getElementById('site').textContent = 'No active Safari tab';
+            document.getElementById('activity').textContent = 'Page activity unavailable.';
+            throw new Error('Open a web page in Safari and reopen ADV. If this is a private window, allow ADV in Private Browsing.');
+        }
+        if (!tab.url) throw new Error('Allow ADV access to this website in Safari, then reopen ADV.');
         const url = new URL(tab.url);
         if (!["http:", "https:"].includes(url.protocol)) throw new Error("Open a regular HTTP or HTTPS page first.");
         host = url.hostname;
@@ -114,5 +116,13 @@ pick.onclick = async () => {
         pick.disabled = false;
         bulk.disabled = false;
         await render();
+        try {
+            await browser.tabs.sendMessage(tab.id, {operation:'activityCheck'}).catch(() => {});
+            const activity = await browser.runtime.sendMessage({operation:'toolbarStatus', tabId:tab.id});
+            document.getElementById('activity').textContent = activity.error ? `Page activity: ${activity.error}`
+                : (activity.blocked ? 'Blocking detected on this page · lid closed.'
+                    : (activity.networkKnown ? 'No blocking detected on this page · lid open.'
+                        : 'No blocking observed · network activity unavailable.'));
+        } catch { document.getElementById('activity').textContent = 'Page activity unavailable.'; }
     } catch (error) { status.textContent = error.message; }
 })();
