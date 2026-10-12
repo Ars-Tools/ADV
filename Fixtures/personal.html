@@ -360,7 +360,8 @@ window.runADVHelpTests = async function(helpScript) {
     ? {modelStatus:'Model unavailable.', explanation:'Read-only inspection.', findings:[], candidates:message.request.candidates}
     : oldNative(application,message);
   browser.scripting = {async executeScript({func,args}) { return [{frameId:0,result:func(...args)}]; }};
-  globalThis.ADVDraft = {revision:0, propose(selector) { ui.querySelector('#selectors').value=selector; this.revision++; }};
+  let selectedPreview;
+  globalThis.ADVDraft = {revision:0, async choose(selector) { ui.querySelector('#selectors').value=selector; this.revision++; selectedPreview=await api.page('preview',selector); }};
   try {
     api.showRule('#ad-123456789');
     ui.querySelector('#help-inspect').click();
@@ -368,11 +369,10 @@ window.runADVHelpTests = async function(helpScript) {
     const row=ui.querySelector('#help-candidates li');
     check(!!row && ui.querySelector('#help-status').textContent.includes('Model unavailable'),'Unavailable model still exposes deterministic candidates in the popup');
     const buttons=row.querySelectorAll('button');
-    check(buttons[1].disabled,'Copying a proposal requires an explicit preview first');
+    check(buttons.length===1 && buttons[0].textContent==='Select & preview','A proposal offers a single selection-and-preview action instead of a copy flow');
     buttons[0].click();
-    for(let i=0;i<100 && buttons[1].disabled;i++) await new Promise(resolve=>setTimeout(resolve,20));
-    buttons[1].click();
-    check(ui.querySelector('#selectors').value==='#ad-123456789' && JSON.stringify(saved)===stateBefore,'Copying only stages explicit CSS in the existing editor; it never saves a rule');
+    for(let i=0;i<100 && buttons[0].disabled;i++) await new Promise(resolve=>setTimeout(resolve,20));
+    check(ui.querySelector('#selectors').value==='#ad-123456789' && selectedPreview.count===1 && JSON.stringify(saved)===stateBefore,'Selecting a proposal stages and previews its condition without saving a rule');
     check(!ui.querySelector('#help-inspect').disabled && !ui.querySelector('#help-ask').disabled,'Help restores its controls after a completed inspection');
   } finally {
     browser.runtime.sendMessage=oldSend; browser.runtime.sendNativeMessage=oldNative; browser.scripting=oldScripting;
@@ -432,6 +432,10 @@ window.runADVWorkspaceControls = async function(helpScript,popupScript,popupHTML
     preview.click();await waitFor(()=>!preview.disabled);
     check(!apply.disabled,'A successful target preview enables explicit application');
     const proposed=editor.value;
+    const candidate=ui.querySelector('#help-candidates li');
+    candidate.querySelector('button').click();await waitFor(()=>!candidate.querySelector('button').disabled);
+    check(editor.value===candidate.querySelector('code').textContent && !editor.value.includes('\n') && !apply.disabled && JSON.stringify(saved)===before,'Choosing a candidate replaces the draft, previews it, and enables Apply without copying or saving');
+    editor.value=proposed;editor.dispatchEvent(new Event('input'));preview.click();await waitFor(()=>!preview.disabled);
     const execute=browser.scripting.executeScript;
     let release;
     browser.scripting.executeScript=async request=>{
