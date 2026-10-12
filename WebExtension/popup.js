@@ -99,6 +99,12 @@ pick.onclick = async () => {
             : (network.enabled ? "Built-in network filters: enabled." : "Built-in network filters: not enabled.");
         await renderSources();
         [tab] = await browser.tabs.query({active: true, currentWindow: true});
+        await browser.tabs.sendMessage(tab.id, {operation:'activityCheck'}).catch(() => {});
+        const activity = await browser.runtime.sendMessage({operation:'toolbarStatus', tabId:tab.id});
+        document.getElementById('activity').textContent = activity.error ? `Page activity: ${activity.error}`
+            : (activity.blocked ? 'Blocking detected on this page · lid closed.'
+                : (activity.networkKnown ? 'No blocking detected on this page · lid open.'
+                    : 'No blocking observed · network activity unavailable.'));
         const url = new URL(tab.url);
         if (!["http:", "https:"].includes(url.protocol)) throw new Error("Open a regular HTTP or HTTPS page first.");
         host = url.hostname;
