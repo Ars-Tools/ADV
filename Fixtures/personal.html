@@ -393,6 +393,11 @@ window.runADVHelpTests = async function(helpScript) {
   check(broadened.candidates.some(candidate=>candidate.selector.includes('dmm')) && broadened.candidates.filter(candidate=>candidate.reason.includes('Inside a marked advertising container.')).length===2,'Related-brand terms from the guide can broaden the visible draft to DMM Games');
   const absent=api.inspectDocument('discover','',[],'',['UnknownBrand']);
   check(absent.candidates.length===0,'Absent brand evidence produces no invented filter');
+  const resolved=document.createElement('img');resolved.setAttribute('src','//relative.ads.invalid/banner.png');
+  Object.defineProperty(resolved,'currentSrc',{value:'https://chosen.ads.invalid/responsive.png',configurable:true});
+  brands.firstElementChild.append(resolved);
+  const responsive=api.inspectDocument('discover','',[],'',['chosen.ads.invalid']);
+  check(responsive.candidates.some(candidate=>!candidate.domain && candidate.selector.includes(CSS.escape('//relative.ads.invalid/banner.png')) && candidate.count===1) && responsive.candidates.some(candidate=>candidate.domain==='chosen.ads.invalid'),'Resolved or responsive image URLs use literal src for matching CSS and currentSrc for observed resource domains');
   brands.remove();
   const rule={id:crypto.randomUUID(),host:location.hostname,selector:'.before-edit',modified:Date.now(),deleted:false};
   remote.push(rule); saved.personalRulesV1=clone(remote);
