@@ -8,6 +8,12 @@ import subprocess
 import threading
 
 ROOT = Path(__file__).resolve().parents[1]
+PAGES = {"/": "index.html", "/youtube-test": "youtube.html", "/personal-test": "personal.html"}
+RESOURCES = {
+    "/content/control.js": ("text/javascript", b"window.normalScriptLoaded = true;"),
+    "/adv-demo/blocked.js": ("text/javascript", b"window.adScriptLoaded = true;"),
+    "/adv-demo/blocked.svg": ("image/svg+xml", b'<svg xmlns="http://www.w3.org/2000/svg" width="64" height="32"><rect width="64" height="32" fill="#f77"/></svg>'),
+}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -15,16 +21,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
-        type_, body = {
-            "/": ("text/html; charset=utf-8", (ROOT / "Fixtures/index.html").read_bytes()),
-            "/youtube-test": ("text/html; charset=utf-8", (ROOT / "Fixtures/youtube.html").read_bytes()),
-            "/personal-test": ("text/html; charset=utf-8", (ROOT / "Fixtures/personal.html").read_bytes()),
-            "/content/control.js": ("text/javascript", b"window.normalScriptLoaded = true;"),
-            "/adv-demo/blocked.js": ("text/javascript", b"window.adScriptLoaded = true;"),
-            "/adv-demo/blocked.svg": ("image/svg+xml", b'<svg xmlns="http://www.w3.org/2000/svg" width="64" height="32"><rect width="64" height="32" fill="#f77"/></svg>'),
-        }.get(path, ("text/plain", b"Not found"))
+        type_, body = ("text/html; charset=utf-8", (ROOT / "Fixtures" / PAGES[path]).read_bytes()) if path in PAGES else RESOURCES.get(path, ("text/plain", b"Not found"))
         self.requests[path] += 1
-        self.send_response(200 if path in ["/", "/youtube-test", "/personal-test", "/content/control.js", "/adv-demo/blocked.js", "/adv-demo/blocked.svg"] else 404)
+        self.send_response(200 if path in PAGES or path in RESOURCES else 404)
         self.send_header("Content-Type", type_)
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
