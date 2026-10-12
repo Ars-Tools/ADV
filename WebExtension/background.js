@@ -198,12 +198,12 @@ async function process(message, sender) {
         const enabled = await browser.declarativeNetRequest.getEnabledRulesets();
         return {enabled: enabled.includes("advertising")};
     }
-    if (!message || !["list", "add", "addMany", "remove"].includes(message.operation)) throw new Error("Unknown operation.");
+    if (!message || !["list", "add", "addMany", "replace", "remove"].includes(message.operation)) throw new Error("Unknown operation.");
     const current = await state();
     if (message.operation === "list") return current;
     let host = message.host;
     const adding = ["add", "addMany"].includes(message.operation);
-    if (adding && sender.tab) {
+    if ((adding || message.operation === "replace") && sender.tab) {
         // A content script can only add a rule for its own frame's site.
         const url = new URL(sender.url || sender.tab.url);
         if (!["http:", "https:"].includes(url.protocol) || url.hostname !== host) throw new Error("Site mismatch.");
@@ -227,6 +227,14 @@ async function process(message, sender) {
             const result = await native({operation: "merge", rules: unique});
             current.rules = result.rules.map(validate);
         } else current.rules = combined;
+    } else if (message.operation === 'replace') {
+        const old = current.rules.find(rule=>rule.id === message.id && !rule.deleted && rule.host === host);
+        if (!old) throw new Error('The rule changed or was removed. Reload the list before editing.');
+        if (old.modified !== message.expectedModified) throw new Error('The rule changed since editing began. Reload the list.');
+        if (current.rules.some(rule=>!rule.deleted && rule.host===host && rule.id!==old.id && rule.selector===message.selector)) throw new Error('That condition already exists for this site.');
+        const replacement = validate({...old, selector:message.selector, modified:Math.max(Date.now(),old.modified + 1)});
+        if (current.shared) current.rules = (await native({operation:'merge', rules:[replacement]})).rules.map(validate);
+        else current.rules = current.rules.map(rule=>rule.id===old.id ? replacement : rule);
     } else if (current.shared) {
         const result = await native({operation: message.operation, host, selector: message.selector, id: message.id});
         current.rules = result.rules.map(validate);
