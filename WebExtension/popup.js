@@ -18,9 +18,10 @@ function invalidateDraft() {
 }
 globalThis.ADVDraft = {
     get revision() { return draftRevision; },
-    propose(selector,title) {
-        const lines=editingRule ? [selector] : [...new Set([...editor.value.split(/\r?\n/).filter(Boolean),selector])];
-        this.stage(lines.join('\n'),title,editingRule);
+    choose(selector,title) {
+        this.stage(selector,title,editingRule);
+        document.getElementById('draft-panel').scrollIntoView({block:'start'});
+        return reviewDraft();
     },
     stage(value,title='Hide matching content',rule) {
         editingRule = rule;
@@ -35,7 +36,7 @@ document.getElementById('clear-draft').onclick = () => {
     ADVDraft.stage('', 'Nothing is staged yet.');
     document.getElementById('bulk-status').textContent = 'Draft discarded. Saved filters were not changed.';
 };
-previewDraft.onclick = async () => {
+async function reviewDraft() {
     bulk.disabled = true; previewDraft.disabled = true;
     try {
         const revision = draftRevision, text = editor.value;
@@ -49,7 +50,8 @@ previewDraft.onclick = async () => {
         if (document.documentElement.classList.contains('workspace')) await browser.tabs.update(tab.id,{active:true});
     } catch(error) { reviewed=undefined; document.getElementById('bulk-status').textContent=error.message; }
     finally { previewDraft.disabled=!host || !editor.value.trim(); }
-};
+}
+previewDraft.onclick = reviewDraft;
 bulk.onclick = async () => {
     bulk.disabled = true;
     const output=document.getElementById('bulk-status');
