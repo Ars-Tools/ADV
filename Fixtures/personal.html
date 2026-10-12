@@ -316,4 +316,63 @@ window.runADVSourceTests = async function(pickerScript, backgroundScript) {
   check(!response.hosts.includes('picked.ads.test') && dynamicRules.filter(rule=>rule.id>=100000).length === 1, 'Unblocking removes the global source rule');
   return JSON.stringify(results);
 };
+
+window.runADVHelpTests = async function(helpScript) {
+  const results = [];
+  function check(condition,name) { if (!condition) throw new Error(name); results.push(name); }
+  const ui = document.createElement('div');
+  ui.innerHTML = `<details id="help"><input id="help-selector"><textarea id="help-html"></textarea><textarea id="help-question"></textarea><p id="help-status"></p><ul id="help-findings"></ul><ul id="help-candidates"></ul><div id="help-conversation"></div><button id="help-inspect"></button><button id="help-ask"></button></details><textarea id="selectors"></textarea>`;
+  const selection = document.createElement('div');
+  selection.innerHTML = '<div id="ad-123456789" class="help-ad"><canvas></canvas></div><div class="help-ad"></div><div class="help-normal">Keep</div>';
+  document.body.append(ui,selection);
+  const stateBefore = JSON.stringify(saved);
+  const api = (0,eval)(helpScript + ';ADVHelp');
+  const snapshot = api.inspectDocument('inspect','#ad-123456789',['.help-ad','div.help-ad',']']);
+  check(snapshot.candidates.some(c=>c.selector==='div.help-ad' && c.count===2),'Help derives reusable classes with real document match counts');
+  check(snapshot.observations[0].matches.join()===snapshot.observations[1].matches.join() && snapshot.observations[2].count===null,'Help reports matching sets and invalid syntax without editing rules');
+  check(!snapshot.candidates.some(c=>['body','html','div'].includes(c.selector)),'Help excludes unqualified whole-page candidates');
+  const pasted = api.inspectDocument('inspect','',[], '<div data-gc-test-id="gc-instream-root"><script>window.__advHelpInjected=true;<'+ '/script><img src="https://should-not-load.example/test"></div>');
+  check(!window.__advHelpInjected && !pasted.candidates.some(c=>c.selector.includes('should-not-load')) && pasted.candidates.some(c=>c.selector==='div[data-gc-test-id="gc-instream-root"]'),'Pasted markup stays inert and only bounded selector evidence is extracted');
+  let rejected=false; try { api.inspectDocument('preview','body'); } catch { rejected=true; }
+  check(rejected,'Help refuses previewing the whole page');
+  const preview = api.inspectDocument('preview','div.help-ad');
+  check(preview.count===2 && document.querySelector('.help-ad').style.display==='', 'Help preview outlines matches without hiding or saving them');
+  globalThis.__advHelpPreview?.remove();
+  const draft = await handlers[0]({operation:'helpDraft', selector:'.help-ad'}, {tab:{id:1,url:location.href},url:location.href});
+  const received = await handlers[0]({operation:'helpDraftGet',tabId:1},{});
+  const consumed = await handlers[0]({operation:'helpDraftGet',tabId:1},{});
+  check(draft.stored && received.selector==='.help-ad' && !consumed.selector,'Picker help handoff is ephemeral and consumed once');
+  const denied = await handlers[0]({operation:'assist',request:{}},{tab:{id:1,url:location.href}});
+  check(!!denied.error,'Page content cannot invoke the model bridge directly');
+  check(JSON.stringify(saved)===stateBefore,'Read-only help and handoff leave persisted filters unchanged');
+  const oldSend = browser.runtime.sendMessage;
+  const oldNative = browser.runtime.sendNativeMessage;
+  const oldScripting = browser.scripting;
+  window.host = location.hostname; window.tab = {id:1};
+  browser.runtime.sendMessage = message => handlers[0](message,{});
+  browser.runtime.sendNativeMessage = async (application,message) => message.operation==='assist'
+    ? {modelStatus:'Model unavailable.', explanation:'Read-only inspection.', findings:[], candidates:message.request.candidates}
+    : oldNative(application,message);
+  browser.scripting = {async executeScript({func,args}) { return [{frameId:0,result:func(...args)}]; }};
+  try {
+    api.showRule('#ad-123456789');
+    ui.querySelector('#help-inspect').click();
+    for(let i=0;i<100 && !ui.querySelector('#help-candidates li');i++) await new Promise(resolve=>setTimeout(resolve,20));
+    const row=ui.querySelector('#help-candidates li');
+    check(!!row && ui.querySelector('#help-status').textContent.includes('Model unavailable'),'Unavailable model still exposes deterministic candidates in the popup');
+    const buttons=row.querySelectorAll('button');
+    check(buttons[1].disabled,'Copying a proposal requires an explicit preview first');
+    buttons[0].click();
+    for(let i=0;i<100 && buttons[1].disabled;i++) await new Promise(resolve=>setTimeout(resolve,20));
+    buttons[1].click();
+    check(ui.querySelector('#selectors').value==='#ad-123456789' && JSON.stringify(saved)===stateBefore,'Copying only stages explicit CSS in the existing editor; it never saves a rule');
+    check(!ui.querySelector('#help-inspect').disabled && !ui.querySelector('#help-ask').disabled,'Help restores its controls after a completed inspection');
+  } finally {
+    browser.runtime.sendMessage=oldSend; browser.runtime.sendNativeMessage=oldNative; browser.scripting=oldScripting;
+    globalThis.__advHelpPreview?.remove(); delete window.host;delete window.tab;
+  }
+
+  ui.remove();selection.remove();
+  return JSON.stringify(results);
+};
 </script></body></html>
