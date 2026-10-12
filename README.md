@@ -103,6 +103,41 @@ The app bundle identifier is `tools.ars.browser.adv`; its Safari extension is
 `tools.ars.browser.adv.safari`. Both display as **ADV**.
 Private Browsing has separate permission controls.
 
+## Optional rule help
+
+The popup's **Rule help · optional** section investigates filters without changing
+or deleting them. From the picker, choose **Help with last selection**, then reopen
+the ADV toolbar popup. You can also use **Inspect / ask** beside a saved rule,
+enter a CSS selector, or paste an HTML fragment. Pasted markup stays in an inert
+browser template; scripts are not executed and raw markup is not sent to the model.
+
+**Inspect rules and selection** checks up to 80 rules for this exact hostname in
+the current top-level document. It reports exact duplicates, invalid syntax,
+possible generated/positional selectors, no current matches, and selectors matching
+the same element set. Counts and equivalence are page-local observations, not
+proof that a rule is unused or redundant elsewhere. Frames and Shadow DOM are not
+inspected. Large match sets are sampled and never treated as proof of equivalence.
+
+**Ask on-device guide** uses Foundation Models on macOS/iOS 26+ when Apple
+Intelligence is supported, enabled, and ready. The guide explains evidence and may
+choose from explicit candidate selectors; it has no write tools or rule-store
+access. Diagnostics and normal editing remain available without the model. No
+external model API, API key, or App Group is required for help itself.
+
+Use **Preview matches** to outline visible matches for ten seconds, then **Copy to
+rule editor**. Review the copied CSS and use the existing **Save rules** button.
+No rule is saved, replaced, or removed by the guide. Remove old rules manually only
+after reviewing their scope. Inference does not hold the serialized rule-write queue.
+
+Only bounded selector evidence, match counts, diagnostics, and recent questions
+are sent to the on-device model. No form contents, page text, scripts, or resource
+query strings are collected automatically. Explicit selectors/questions may still
+contain information you type. Conversation lives only in the popup and is lost
+when it closes. Picker handoff is held in background memory for up to ten minutes,
+is consumed once, and is neither persisted nor synced. System model availability
+and inference inside Safari's extension process still require testing on each
+supported device; successful compilation alone is not a runtime guarantee.
+
 ## Add and remove personal filters in Safari
 
 1. Open a normal HTTP/HTTPS page. Grant **ADV** access to that website
