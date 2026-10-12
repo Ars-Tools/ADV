@@ -104,7 +104,7 @@ final class PageProbe: NSObject, WKNavigationDelegate {
         _ = try await webView.evaluateJavaScript(background + "\n;void 0;")
         let json = try await runJavaScript("return await window.runADVPersonalTests(personal, picker, background);", arguments: ["personal": personal, "picker": picker, "background": background])
         let results = try JSONDecoder().decode([String].self, from: Data(json.utf8))
-        guard results.count == 30 else { throw NSError(domain: "ADVCheck", code: 7) }
+        guard results.count == 44 else { throw NSError(domain: "ADVCheck", code: 7) }
         for result in results { print("PASS: \(result).") }
         let sourceJSON = try await runJavaScript("return await window.runADVSourceTests(picker, background);", arguments: ["picker": picker, "background": background])
         let sourceResults = try JSONDecoder().decode([String].self, from: Data(sourceJSON.utf8))
