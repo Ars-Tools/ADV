@@ -9,7 +9,7 @@ them for packaging. The WebKit verifier alone adapts them to Content Blocker rul
 Mac entitlements live in each executable target's source directory and are used
 for local signing or merged with provisioning entitlements for configured builds.
 
-> **Note:** This codebase was written using GPT-6.1 Sol with Medium reasoning effort.
+> **Note:** This codebase was developed with assistance from large language models (LLMs).
 
 The native app, Safari popup, and element-picker panel use a Bauhaus-inspired
 design: warm paper, black typography and rules, primary-color geometric shapes,
