@@ -78,7 +78,9 @@ async function render() {
                 await render();
             } catch (error) { status.textContent = error.message; remove.disabled = false; }
         };
-        item.append(code, remove); list.append(item);
+        const help = document.createElement('button'); help.textContent = 'Inspect / ask';
+        help.onclick = () => ADVHelp.showRule(rule.selector);
+        item.append(code, remove, help); list.append(item);
     }
     if (!list.children.length) list.textContent = "No personal rules for this site.";
 }
@@ -116,6 +118,7 @@ pick.onclick = async () => {
         pick.disabled = false;
         bulk.disabled = false;
         await render();
+        await ADVHelp.loadDraft().catch(() => {});
         try {
             await browser.tabs.sendMessage(tab.id, {operation:'activityCheck'}).catch(() => {});
             const activity = await browser.runtime.sendMessage({operation:'toolbarStatus', tabId:tab.id});
