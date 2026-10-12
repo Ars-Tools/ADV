@@ -5,7 +5,7 @@
 - Cosmetic filters persist per exact hostname in browser-local JSON or signed App Group JSON. Global provider blocks persist separately in browser storage and dynamic DNR rules. Saving source blocks does not save cosmetic selections.
 - Prefer stable CSS classes/ad attributes over generated IDs. Saved CSS applies to newly inserted matching elements. Selector generation is heuristic; YouTube ad removal is best effort.
 - CloudKit synchronization is manual and covers personal cosmetic filters only; signed App Groups and CloudKit provisioning are required. SwiftData is not implemented; real cross-device sync remains unverified.
-- Keep UI and documentation in English with the existing Bauhaus design. Preserve the extension identifier `local.adv.YouTube` for stored settings and the README's GPT-6.1 Sol Medium attribution.
+- Keep UI and documentation in English with the existing Bauhaus design. Preserve the extension identifier `local.adv.YouTube` for stored settings and the README's LLM-assistance note.
 - Build: `python3 Tools/package.py macos` or `ios`. Run `swift test`; use the README's `Tools/demo_server.py --verify` command for WebKit integration checks. iOS unsigned builds validate compilation only.
 - DNR is the canonical network rule format. `ADVCheck export [output.json]` exports it; only the WebKit harness translates it into Content Blocker rules. Each signed executable target owns its `macOS.entitlements` file; keep Safari state and CloudKit services separate.
 - App artwork lives in `Sources/ADVApp/AppIcon.icon` as SVG plus Icon Composer metadata. Xcode 26+ `actool` compiles it during packaging for both bundles, including older-OS fallbacks; do not commit generated PNG, ICNS, or CAR files. The Safari toolbar uses a separate monochrome SVG.
