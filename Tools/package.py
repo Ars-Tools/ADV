@@ -5,6 +5,7 @@ No Xcode project is generated. Uses only Python's standard library.
 """
 import argparse
 import datetime
+import json
 import os
 from pathlib import Path
 import plistlib
@@ -158,7 +159,7 @@ def main():
 
         common = {
             "CFBundleDevelopmentRegion": "en", "CFBundleDisplayName": "ADV",
-            "CFBundleName": "ADV", "CFBundleShortVersionString": "0.4.0",
+            "CFBundleName": "ADV", "CFBundleShortVersionString": json.loads((ROOT / "WebExtension/manifest.json").read_text())["version"],
             "CFBundleVersion": "4", "CFBundleInfoDictionaryVersion": "6.0",
         }
         app_info = dict(common, CFBundleIdentifier=args.bundle_id, CFBundleExecutable="ADVApp", CFBundlePackageType="APPL")
