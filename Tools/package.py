@@ -28,6 +28,22 @@ def write_plist(path, value):
     path.write_bytes(plistlib.dumps(value, sort_keys=False))
 
 
+def compile_icon(staging, platform):
+    output = staging / "icon-assets"
+    output.mkdir()
+    partial_info = staging / "icon-info.plist"
+    apple_platform = {"macos": "macosx", "ios": "iphoneos", "simulator": "iphonesimulator"}[platform]
+    command = ["xcrun", "actool", ROOT / "Sources/ADVApp/AppIcon.icon",
+               "--compile", output, "--platform", apple_platform,
+               "--minimum-deployment-target", "13.0" if platform == "macos" else "16.0",
+               "--app-icon", "AppIcon", "--output-partial-info-plist", partial_info,
+               "--output-format", "human-readable-text", "--warnings", "--errors"]
+    if platform != "macos":
+        command += ["--target-device", "iphone", "--target-device", "ipad"]
+    run(*command)
+    return output, plistlib.loads(partial_info.read_bytes())
+
+
 def profile_entitlements(path, bundle_id):
     profile = plistlib.loads(run("security", "cms", "-D", "-i", path, capture=True))
     if profile["ExpirationDate"] <= datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None):
@@ -136,6 +152,9 @@ def main():
         shutil.copytree(ROOT / "WebExtension", youtube_resources, dirs_exist_ok=True)
 
         run(host_bin / "ADVCheck", "export", youtube_resources / "networkRules.json")
+        icon_assets, icon_info = compile_icon(staging, args.platform)
+        for resources in [app_root / "Resources" if mac else app_root, youtube_resources]:
+            shutil.copytree(icon_assets, resources, dirs_exist_ok=True)
 
         common = {
             "CFBundleDevelopmentRegion": "en", "CFBundleDisplayName": "ADV",
@@ -148,6 +167,7 @@ def main():
                             CFBundlePackageType="XPC!", NSExtension={
                                 "NSExtensionPointIdentifier": "com.apple.Safari.web-extension",
                                 "NSExtensionPrincipalClass": "ADVWebExtensionRequestHandler"})
+        for info in [app_info, youtube_info]: info.update(icon_info)
         if args.app_group:
             for info in [app_info, youtube_info]: info["ADVAppGroup"] = args.app_group
         if args.cloud_container:
