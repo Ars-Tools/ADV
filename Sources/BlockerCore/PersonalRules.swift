@@ -30,11 +30,12 @@ public struct PersonalRule: Codable, Sendable, Equatable, Identifiable {
 }
 
 public enum PersonalRuleError: LocalizedError {
-    case invalidRule, tooLarge
+    case invalidRule, tooLarge, conflict
     public var errorDescription: String? {
         switch self {
         case .invalidRule: "Invalid site or selector."
         case .tooLarge: "The personal rule collection exceeds the 500 KB limit."
+        case .conflict: "The rule changed or was removed. Reload the list before editing."
         }
     }
 }
@@ -73,6 +74,20 @@ public struct PersonalRuleStore: Sendable {
     @discardableResult
     public func merge(_ incoming: [PersonalRule]) throws -> [PersonalRule] {
         try transaction { try PersonalRules.merge($0, incoming) }
+    }
+    @discardableResult
+    public func replace(id: String, host: String, selector: String, expectedModified: Double) throws -> [PersonalRule] {
+        try transaction { rules in
+            var rules = rules
+            guard let index = rules.firstIndex(where: { $0.id == id && !$0.deleted && $0.host == host }),
+                  rules[index].modified == expectedModified else { throw PersonalRuleError.conflict }
+            guard !rules.contains(where: { !$0.deleted && $0.host == host && $0.id != id && $0.selector == selector }) else {
+                throw PersonalRuleError.invalidRule
+            }
+            rules[index].selector = selector
+            rules[index].modified = max(Date().timeIntervalSince1970 * 1000, expectedModified + 1)
+            return rules
+        }
     }
     @discardableResult
     public func remove(id: String) throws -> [PersonalRule] {
