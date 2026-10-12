@@ -46,3 +46,12 @@ private func observations(_ json: String) throws -> [RuleObservation] {
     """.utf8))
     #expect(throws: (any Error).self) { try RuleDiagnostics.validate(request) }
 }
+
+@Test func domainProposalsRequireLiteralHostnames() throws {
+    for domain in ["ads.example.com", "https://ads.example.com", "ads.example.com/path", "ads..example.com"] {
+        let json: [String: Any] = ["host":"example.com", "question":"Block the provider", "candidates":[["domain":domain, "selector":".ad", "reason":"Observed resource host", "count":1]], "observations":[], "history":[]]
+        let request = try JSONDecoder().decode(AssistanceRequest.self, from: JSONSerialization.data(withJSONObject: json))
+        if domain == "ads.example.com" { try RuleDiagnostics.validate(request) }
+        else { #expect(throws: (any Error).self) { try RuleDiagnostics.validate(request) } }
+    }
+}
