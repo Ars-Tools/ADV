@@ -50,6 +50,10 @@ window.browser = {
         for (const rule of message.rules) merged.set(rule.id,clone(rule));
         remote = [...merged.values()];
       }
+      if (message.operation === 'remove') {
+        const rule = remote.find(rule=>rule.id===message.id);
+        if (rule) { rule.deleted=true; rule.modified=Math.max(Date.now(),rule.modified+1); }
+      }
       return {shared:true, rules:clone(remote)};
     },
     async sendMessage(message) { return await handlers[0](message, {tab:{id:1,url:location.href},url:location.href}); }
@@ -203,6 +207,64 @@ window.runADVPersonalTests = async function(personalScript, pickerScript, backgr
   (0,eval)(pickerScript); marked.click();
   check(pickerRoot.getElementById('selector').value === 'ins[data-ad-slot]', 'Picker uses ad attribute presence instead of rotating IDs or slot values');
   pickerRoot.getElementById('cancel').click();
+  const stubborn = document.createElement('div');
+  stubborn.className = 'stubborn-ad'; stubborn.style.setProperty('display','block','important');
+  document.body.append(stubborn);
+  await browser.runtime.sendMessage({operation:'addMany',host:location.hostname,selectors:['.stubborn-ad']});
+  await new Promise(resolve=>setTimeout(resolve,250));
+  check(getComputedStyle(stubborn).display === 'none','Personal filters override inline important display declarations');
+  stubborn.style.setProperty('display','flex','important');
+  await wait(()=>getComputedStyle(stubborn).display === 'none');
+  check(getComputedStyle(stubborn).display === 'none','Page style changes cannot reveal a matching saved element');
+  const ruleState = await browser.runtime.sendMessage({operation:'list'});
+  await browser.runtime.sendMessage({operation:'remove',id:ruleState.rules.find(rule=>rule.selector==='.stubborn-ad'&&!rule.deleted).id});
+  await wait(()=>getComputedStyle(stubborn).display === 'flex');
+  check(stubborn.style.getPropertyValue('display')==='flex','Removing a rule restores the latest page display declaration');
+  const advStyle=[...document.querySelectorAll('style')].find(style=>style.textContent.includes('section.advertisement'));
+  advStyle.textContent='';
+  await wait(()=>advStyle.textContent.includes('section.advertisement'));
+  check(getComputedStyle(replacement).display === 'none','Connected ADV stylesheet tampering is repaired');
+  const ruleCount=advStyle.sheet.cssRules.length;
+  advStyle.sheet.deleteRule(0);
+  await browser.tabs.sendMessage(1,{operation:'refresh'});
+  await wait(()=>advStyle.sheet.cssRules.length===ruleCount);
+  check(advStyle.sheet.cssRules.length===ruleCount,'CSSOM rule deletion is repaired even when stylesheet text is unchanged');
+  advStyle.sheet.disabled=true;
+  await browser.tabs.sendMessage(1,{operation:'refresh'});
+  await wait(()=>!advStyle.sheet.disabled);
+  check(!advStyle.sheet.disabled,'A disabled ADV stylesheet is re-enabled');
+  advStyle.media='not all';
+  await wait(()=>advStyle.media==='');
+  check(advStyle.media==='','Changed stylesheet media cannot suppress personal filters');
+  const priorityAd=document.createElement('div'); priorityAd.id='specific-ad'; priorityAd.className='priority-ad';
+  const pageOverride=document.createElement('style'); pageOverride.textContent='#specific-ad.priority-ad {display:block!important}';
+  document.head.append(pageOverride); document.body.append(priorityAd);
+  await browser.runtime.sendMessage({operation:'addMany',host:location.hostname,selectors:['.priority-ad']});
+  await wait(()=>getComputedStyle(priorityAd).display==='none');
+  check(getComputedStyle(priorityAd).display==='none','A more specific page important rule cannot override a personal filter');
+  const commonOne=document.createElement('article'); commonOne.id='ad-banner-1'; commonOne.className='common-ad';
+  const commonTwo=document.createElement('article'); commonTwo.id='ad-banner-2'; commonTwo.className='common-ad';
+  const ordinary=document.createElement('article'); ordinary.className='ordinary-card';
+  document.body.append(commonOne,commonTwo,ordinary);
+  (0,eval)(pickerScript); commonOne.click();
+  const similar=pickerRoot.getElementById('similar'); similar.checked=true; similar.dispatchEvent(new Event('change'));
+  check(pickerRoot.getElementById('selector').value==='article.common-ad','Reusable picking ignores serial IDs and sibling positions');
+  check(pickerRoot.querySelectorAll('.selected-outline').length===2,'Reusable picker previews every matching element');
+  commonTwo.click();
+  check(pickerRoot.querySelectorAll('#selected li').length===1,'Selecting another covered element does not remove the common filter');
+  pickerRoot.getElementById('save').click();
+  await wait(()=>getComputedStyle(commonOne).display==='none' && getComputedStyle(commonTwo).display==='none');
+  const commonLater=document.createElement('article'); commonLater.id='ad-banner-99'; commonLater.className='common-ad'; document.body.append(commonLater);
+  check(getComputedStyle(commonLater).display==='none' && getComputedStyle(ordinary).display!=='none','Common filters hide later repeated ads while preserving unrelated cards');
+  const tagOne=document.createElement('adv-slot'); const tagTwo=document.createElement('adv-slot');
+  document.body.append(tagOne,tagTwo);
+  (0,eval)(pickerScript); tagOne.click();
+  const tagSimilar=pickerRoot.getElementById('similar'); tagSimilar.checked=true; tagSimilar.dispatchEvent(new Event('change'));
+  check(pickerRoot.getElementById('selector').value==='adv-slot','Reusable picking can register an entire custom tag');
+  pickerRoot.getElementById('save').click();
+  await wait(()=>getComputedStyle(tagOne).display==='none' && getComputedStyle(tagTwo).display==='none');
+  const tagLater=document.createElement('adv-slot'); document.body.append(tagLater);
+  check(getComputedStyle(tagLater).display==='none','A saved tag filter also hides newly inserted identical tags');
   document.querySelectorAll('style').forEach(style=>style.remove());
   delete globalThis.__advPersonalLoaded;
   (0,eval)(personalScript);
