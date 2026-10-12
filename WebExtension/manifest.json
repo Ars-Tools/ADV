@@ -7,7 +7,7 @@
   "declarative_net_request": {"rule_resources": [{"id": "advertising", "enabled": true, "path": "networkRules.json"}]},
   "host_permissions": ["http://*/*", "https://*/*"],
   "background": {"scripts": ["background.js"], "type": "module"},
-  "action": {"default_title": "ADV", "default_popup": "popup.html", "default_icon": "toolbar.svg"},
+  "action": {"default_title": "ADV", "default_popup": "popup.html", "default_icon": "toolbar-idle.svg"},
   "content_scripts": [
     {
       "matches": ["http://*/*", "https://*/*"],
