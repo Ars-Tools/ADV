@@ -94,11 +94,15 @@ async function installSources(hosts) {
     sourcesReady = true;
 }
 
+function isPageSender(sender) {
+    return !!sender.tab && !(typeof sender.url === 'string' && sender.url.startsWith(browser.runtime.getURL('')));
+}
+
 async function processSources(message, sender) {
     const old = await savedSources();
     if (!sourcesReady) await installSources(old);
     if (message.operation === "sourceList") return {hosts: old};
-    if (sender.tab) {
+    if (isPageSender(sender)) {
         const page = new URL(sender.url || sender.tab.url);
         if (!["http:", "https:"].includes(page.protocol) || page.hostname !== message.pageHost) throw new Error("Site mismatch.");
     }
@@ -153,7 +157,7 @@ async function state() {
 
 async function process(message, sender) {
     if (message?.operation === 'helpDraft') {
-        if (!sender.tab || typeof message.selector !== 'string' || message.selector.length > 2048) throw new Error('Invalid help selection.');
+        if (!isPageSender(sender) || typeof message.selector !== 'string' || message.selector.length > 2048) throw new Error('Invalid help selection.');
         const page = new URL(sender.url || sender.tab.url);
         const draft = {host:page.hostname, selector:message.selector, expires:Date.now() + 600000};
         helpDrafts.set(sender.tab.id, draft);
@@ -161,18 +165,18 @@ async function process(message, sender) {
         return {stored:true};
     }
     if (message?.operation === 'helpDraftGet') {
-        if (sender.tab || !Number.isInteger(message.tabId)) throw new Error('Invalid help request.');
+        if (isPageSender(sender) || !Number.isInteger(message.tabId)) throw new Error('Invalid help request.');
         const draft = helpDrafts.get(message.tabId);
         helpDrafts.delete(message.tabId);
         return draft && draft.expires > Date.now() ? draft : {};
     }
     if (message?.operation === 'assist') {
-        if (sender.tab || JSON.stringify(message.request).length > 100000) throw new Error('Invalid assistance request.');
+        if (isPageSender(sender) || JSON.stringify(message.request).length > 100000) throw new Error('Invalid assistance request.');
         // Inference must not occupy the serialized rule-write queue.
         return browser.runtime.sendNativeMessage('ADV', message);
     }
     if (message?.operation === 'activity') {
-        if (!sender.tab || typeof message.blocked !== 'boolean' || typeof message.document !== 'string' ||
+        if (!isPageSender(sender) || typeof message.blocked !== 'boolean' || typeof message.document !== 'string' ||
             message.document.length > 64 || !Number.isFinite(message.started)) throw new Error('Invalid activity report.');
         const state = tabActivity(sender.tab.id);
         const frameId = sender.frameId || 0;
@@ -190,7 +194,7 @@ async function process(message, sender) {
         return await updateToolbar(sender.tab.id);
     }
     if (message?.operation === 'toolbarStatus') {
-        if (sender.tab || !Number.isInteger(message.tabId)) throw new Error('Invalid toolbar request.');
+        if (isPageSender(sender) || !Number.isInteger(message.tabId)) throw new Error('Invalid toolbar request.');
         return await updateToolbar(message.tabId, true);
     }
     if (["sourceList", "sourceAdd", "sourceRemove"].includes(message?.operation)) return processSources(message, sender);
@@ -203,7 +207,7 @@ async function process(message, sender) {
     if (message.operation === "list") return current;
     let host = message.host;
     const adding = ["add", "addMany"].includes(message.operation);
-    if ((adding || message.operation === "replace") && sender.tab) {
+    if ((adding || message.operation === "replace") && isPageSender(sender)) {
         // A content script can only add a rule for its own frame's site.
         const url = new URL(sender.url || sender.tab.url);
         if (!["http:", "https:"].includes(url.protocol) || url.hostname !== host) throw new Error("Site mismatch.");
@@ -233,7 +237,7 @@ async function process(message, sender) {
         if (old.modified !== message.expectedModified) throw new Error('The rule changed since editing began. Reload the list.');
         if (current.rules.some(rule=>!rule.deleted && rule.host===host && rule.id!==old.id && rule.selector===message.selector)) throw new Error('That condition already exists for this site.');
         const replacement = validate({...old, selector:message.selector, modified:Math.max(Date.now(),old.modified + 1)});
-        if (current.shared) current.rules = (await native({operation:'merge', rules:[replacement]})).rules.map(validate);
+        if (current.shared) current.rules = (await native({operation:'replace', id:old.id, host, selector:message.selector, expectedModified:old.modified})).rules.map(validate);
         else current.rules = current.rules.map(rule=>rule.id===old.id ? replacement : rule);
     } else if (current.shared) {
         const result = await native({operation: message.operation, host, selector: message.selector, id: message.id});
