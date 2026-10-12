@@ -149,6 +149,14 @@ for up to 80 rules. A single-page observation does not prove global redundancy.
 The store-independent `RuleAssistance` module provides deterministic diagnostics
 and optional Foundation Models explanations. The model has no write tools.
 
+You can also describe an ad without selecting it or naming a brand, for example
+“Help me hide the ad on the right.” ADV inspects up to 500 known advertising
+containers and offers up to 12 explicit CSS candidates with position, size, and
+image-description evidence. Foundation Models can choose a candidate or ask for
+clarification; only its chosen candidate is staged for this general search.
+Preview and Apply are still required. This is DOM-based inspection, not image
+recognition: unmarked ads, frame contents, and Shadow DOM may require the picker.
+
 On-device conversation requires macOS/iOS 26+ with supported, enabled, ready Apple
 Intelligence. Diagnostics, the picker, and manual editing remain available without
 it. No external model API or API key is used. Only bounded candidate evidence,
