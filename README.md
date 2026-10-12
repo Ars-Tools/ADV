@@ -103,40 +103,58 @@ The app bundle identifier is `tools.ars.browser.adv`; its Safari extension is
 `tools.ars.browser.adv.safari`. Both display as **ADV**.
 Private Browsing has separate permission controls.
 
-## Optional rule help
+## Conversation, drafts, and saved filters
 
-The popup's **Rule help · optional** section investigates filters without changing
-or deleting them. From the picker, choose **Help with last selection**, then reopen
-the ADV toolbar popup. You can also use **Inspect / ask** beside a saved rule,
-enter a CSS selector, or paste an HTML fragment. Pasted markup stays in an inert
-browser template; scripts are not executed and raw markup is not sent to the model.
+The ADV popup has three areas: **Describe your intent**, **Review your draft**, and
+**Your saved filters**. **Open full workspace** opens the same interface in an
+extension tab, showing draft and saved filters beside conversation on wide screens.
+Narrow screens stack the areas. The workspace remains bound to the original page's
+tab ID; changing active tabs does not silently retarget an investigation. To use a
+new site, open ADV from that site. Returning from the picker can load a one-time
+selection handoff without closing the workspace.
 
-**Inspect rules and selection** checks up to 80 rules for this exact hostname in
-the current top-level document. It reports exact duplicates, invalid syntax,
-possible generated/positional selectors, no current matches, and selectors matching
-the same element set. Counts and equivalence are page-local observations, not
-proof that a rule is unused or redundant elsewhere. Frames and Shadow DOM are not
-inspected. Large match sets are sampled and never treated as proof of equivalence.
+For example, ask **Hide the FANZA ads on this page.** Foundation Models extracts
+search terms, then ADV inspects up to 500 links, image descriptions, and iframe URLs
+in the top document. The model may include related brands/domains such as DMM or
+DMM Games. Search scope, candidate evidence, match counts, and exact CSS conditions
+remain visible. Broadening is allowed as a proposal; you decide whether to apply
+it, and individual saved rules can be removed afterwards.
 
-**Ask on-device guide** uses Foundation Models on macOS/iOS 26+ when Apple
-Intelligence is supported, enabled, and ready. The guide explains evidence and may
-choose from explicit candidate selectors; it has no write tools or rule-store
-access. Diagnostics and normal editing remain available without the model. No
-external model API, API key, or App Group is required for help itself.
+Candidate conditions come from actual DOM attributes and URL/description evidence;
+model-generated JavaScript is never executed. Compatible proposals may be staged
+in an empty draft. A draft edited while investigation is running is not overwritten.
+Unknown evidence produces no invented selector: use **Select on the page**, then
+**Help with last selection**, or supply an element selector/HTML fragment. The scan
+cannot identify an unlabelled bitmap by appearance, inspect iframe contents or
+Shadow DOM, or resolve a hidden click-time destination. Pasted markup remains in
+an inert template and is not executed or sent to the model.
 
-Use **Preview matches** to outline visible matches for ten seconds, then **Copy to
-rule editor**. Review the copied CSS and use the existing **Save rules** button.
-No rule is saved, replaced, or removed by the guide. Remove old rules manually only
-after reviewing their scope. Inference does not hold the serialized rule-write queue.
+Review **Conditions · view or edit CSS**, then select **Preview draft on page**.
+Visible targets are outlined for ten seconds. **Apply draft** is enabled only after
+preview; changed conditions, a reloaded page, or a changed match count require a
+new preview. Conversation and staging never save filters. The workspace can switch
+to the source tab for preview or picking; return to its tab to continue. Source
+domain blocking remains a separate explicit action with all-site scope.
 
-Only bounded selector evidence, match counts, diagnostics, and recent questions
-are sent to the on-device model. No form contents, page text, scripts, or resource
-query strings are collected automatically. Explicit selectors/questions may still
-contain information you type. Conversation lives only in the popup and is lost
-when it closes. Picker handoff is held in background memory for up to ten minutes,
-is consumed once, and is neither persisted nor synced. System model availability
-and inference inside Safari's extension process still require testing on each
-supported device; successful compilation alone is not a runtime guarantee.
+Saved conditions have **Edit**, **Inspect / ask**, and **Remove** actions. Edits use
+the same draft and preview flow, preserve rule identity, and reject stale revisions.
+Adding keeps existing filters. Technical details are expandable, not hidden from
+inspection. Rules are the source of truth, rather than conversation history.
+
+**Check existing filters** reports duplicates, invalid syntax, possible generated
+or positional selectors, no current matches, and page-local element-set overlap
+for up to 80 rules. A single-page observation does not prove global redundancy.
+The store-independent `RuleAssistance` module provides deterministic diagnostics
+and optional Foundation Models explanations. The model has no write tools.
+
+On-device conversation requires macOS/iOS 26+ with supported, enabled, ready Apple
+Intelligence. Diagnostics, the picker, and manual editing remain available without
+it. No external model API or API key is used. Only bounded candidate evidence,
+counts, recent questions, and findings enter the model context; URL query strings,
+form values, scripts, and raw pasted HTML are not collected for inference.
+Conversation is ephemeral in the popup/workspace. Picker handoff expires in memory
+after ten minutes and is consumed once. Neither is synced. Safari-process inference
+and iOS installation still require runtime checks on supported devices.
 
 ## Add and remove personal filters in Safari
 
@@ -158,7 +176,8 @@ supported device; successful compilation alone is not a runtime guarantee.
 5. Use **Remove** in the popup to delete a saved filter.
 
 To register several filters at once, open **Add in bulk** in the popup, paste one
-CSS selector per line, then select **Save rules**. For example:
+CSS selector per line under **Conditions · view or edit CSS**, then select
+**Preview draft on page** and **Apply draft**. For example:
 
 ```css
 #sidebar-ad
