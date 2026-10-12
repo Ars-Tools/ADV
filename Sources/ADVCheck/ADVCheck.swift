@@ -117,8 +117,15 @@ final class PageProbe: NSObject, WKNavigationDelegate {
         let help = try String(contentsOf: resourceDirectory.appendingPathComponent("help.js"), encoding: .utf8)
         let helpJSON = try await runJavaScript("return await window.runADVHelpTests(help);", arguments: ["help": help])
         let helpResults = try JSONDecoder().decode([String].self, from: Data(helpJSON.utf8))
-        guard helpResults.count == 13 else { throw NSError(domain: "ADVCheck", code: 12) }
+        guard helpResults.count == 20 else { throw NSError(domain: "ADVCheck", code: 12) }
         for result in helpResults { print("PASS: \(result).") }
+        let popupScript = try String(contentsOf: resourceDirectory.appendingPathComponent("popup.js"), encoding: .utf8)
+        let popupHTML = try String(contentsOf: resourceDirectory.appendingPathComponent("popup.html"), encoding: .utf8)
+        let controlsJSON = try await runJavaScript("return await window.runADVWorkspaceControls(help,popup,html);", arguments: ["help":help,"popup":popupScript,"html":popupHTML])
+        let controls = try JSONDecoder().decode([String].self, from: Data(controlsJSON.utf8))
+        guard controls.count == 7 else { throw NSError(domain:"ADVCheck",code:14) }
+        for result in controls { print("PASS: \(result).") }
+
 
     }
 
@@ -144,6 +151,29 @@ final class PageProbe: NSObject, WKNavigationDelegate {
                 throw NSError(domain: "ADVCheck", code: 8, userInfo: [NSLocalizedDescriptionKey: "Popup collapsed at viewport width \(width)."])
             }
             print("PASS: Popup retains readable width in a \(Int(width))px initial viewport.")
+        }
+    }
+
+    func verifyWorkspace(resourceDirectory: URL) async throws {
+        var components = URLComponents(url: resourceDirectory.appendingPathComponent("popup.html"), resolvingAgainstBaseURL: false)!
+        components.query = "workspace=1&tabId=1"
+        for width in [1200.0, 390.0] {
+            webView.frame.size = NSSize(width: width, height: 800)
+            try await load(components.url!)
+            let valid = try await webView.evaluateJavaScript("""
+            (() => {
+                const help = document.querySelector('#help').getBoundingClientRect();
+                const draft = document.querySelector('#draft-panel').getBoundingClientRect();
+                const saved = document.querySelector('#saved-panel').getBoundingClientRect();
+                const wide = window.innerWidth > 980;
+                return document.documentElement.classList.contains('workspace') &&
+                  document.body.scrollWidth <= window.innerWidth &&
+                  (wide ? draft.left < saved.left && saved.left < help.left
+                        : help.top < draft.top && draft.top < saved.top);
+            })()
+            """) as? Bool
+            guard valid == true else { throw NSError(domain: "ADVCheck", code: 13, userInfo: [NSLocalizedDescriptionKey: "Workspace layout failed at \(width)px."] ) }
+            print("PASS: Workspace keeps draft, saved rules, and conversation readable at \(Int(width))px.")
         }
     }
 
@@ -219,6 +249,7 @@ enum ADVCheck {
             try await PageProbe(ruleList: nil).verifyYouTube(url.appendingPathComponent("youtube-test"), resourceDirectory: youtubeResources)
             try await PageProbe(ruleList: nil).verifyPersonal(url.appendingPathComponent("personal-test"), resourceDirectory: youtubeResources)
             try await PageProbe(ruleList: nil).verifyPopup(resourceDirectory: youtubeResources.standardizedFileURL)
+            try await PageProbe(ruleList: nil).verifyWorkspace(resourceDirectory: youtubeResources.standardizedFileURL)
             try await WKContentRuleListStore.default().removeContentRuleList(forIdentifier: identifier)
         } catch {
             try? await WKContentRuleListStore.default().removeContentRuleList(forIdentifier: identifier)
