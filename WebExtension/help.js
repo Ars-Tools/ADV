@@ -13,8 +13,9 @@ const ADVHelp = (() => {
     const ask = document.getElementById('help-ask');
     let history = [];
     let scope;
+    let searchTerms = [];
 
-    function inspectDocument(mode, selector, selectors = [], html = '') {
+    function inspectDocument(mode, selector, selectors = [], html = '', terms = []) {
         const valid = value => typeof value === 'string' && value.length <= 2048 && !/[{}@\x00-\x1f\x7f]/.test(value);
         function matches(value) {
             if (!valid(value) || !value.trim()) throw new Error('Enter a valid CSS selector.');
@@ -38,7 +39,7 @@ const ADVHelp = (() => {
             document.documentElement.append(overlay);
             globalThis.__advHelpPreview = overlay;
             setTimeout(() => { overlay.remove(); if (globalThis.__advHelpPreview === overlay) delete globalThis.__advHelpPreview; }, 10000);
-            return {host:location.hostname, count:nodes.length};
+            return {host:location.hostname, count:nodes.length, started:performance.timeOrigin};
         }
         if (selectors.length > 80 || html.length > 10000) throw new Error('Inspect at most 80 rules or 10,000 characters of HTML at once.');
         const ids = new WeakMap(); let nextID = 0;
@@ -59,12 +60,67 @@ const ADVHelp = (() => {
             element = template.content.firstElementChild;
         } else if (selector.trim()) element = matches(selector)[0];
         const result = [];
-        function add(value, reason) {
+        const generated = value => /[a-f0-9]{8,}|[0-9]{8,}|[a-f0-9]{8}-[a-f0-9-]{27,}/i.test(value) || (value.length >= 20 && /[0-9]/.test(value) && /[a-z]/i.test(value));
+
+        function add(value, reason, label) {
             if (result.length >= 12 || result.some(item=>item.selector === value) || !valid(value)) return;
-            try { const nodes = matches(value); result.push({selector:value, reason, count:nodes.length}); } catch { /* Not a usable page selector. */ }
+            try {
+                const nodes = matches(value);
+                if (mode==='discover' && result.some(item=>{
+                    const previous=[...document.querySelectorAll(item.selector)];
+                    return previous.length===nodes.length && previous.every(node=>nodes.includes(node));
+                })) return;
+                result.push({selector:value, reason:reason.slice(0,200), label, count:nodes.length});
+            } catch { /* Not a usable page selector. */ }
+        }
+        if (mode === 'discover') {
+            const words = terms.filter(word=>typeof word==='string' && word.length>1 && word.length<=40).slice(0,4);
+            if (words.some(word=>/^(fanza|ファンザ)$/i.test(word))) words.push('FANZA','ファンザ');
+            const adScope = '[data-ad-slot], [data-ad-client], .ad-card, .advertisement, .ad, .wipe-ad-div-class, [id^="bnc_ad"], [id^="adstir_inview_"]';
+            for (const node of [...document.querySelectorAll('a[href], img[alt], iframe[src]')].slice(0,500)) {
+                let leaf, evidence, word;
+                if (node.matches('img[alt]')) {
+                    word = words.find(value=>node.alt.toLowerCase().includes(value.toLowerCase()));
+                    if (!word) continue;
+                    leaf = `img[alt*="${CSS.escape(word)}" i]`;
+                    evidence = `Image description contains “${word}”.`;
+                } else {
+                    if (node.matches('a') && !node.querySelector('img') && !node.closest(adScope)) continue;
+                    const attr = node.matches('a') ? 'href' : 'src';
+                    const raw = node.getAttribute(attr);
+                    try {
+                        const url = new URL(raw,document.baseURI);
+                        if (!['http:','https:'].includes(url.protocol)) continue;
+                        word = words.find(value=>value.includes('.')
+                            ? url.hostname===value.toLowerCase() || url.hostname.endsWith('.'+value.toLowerCase())
+                            : (url.hostname + decodeURIComponent(url.pathname)).toLowerCase().includes(value.toLowerCase()));
+                        if (!word || !raw.split(/[?#]/)[0]) continue;
+                        leaf = `${node.localName}[${attr}^="${CSS.escape(raw.split(/[?#]/)[0])}" i]`;
+                        evidence = `URL host or path mentions “${word}” (${url.hostname}).`;
+                    } catch { continue; }
+                }
+                let selector = leaf;
+                const container = node.closest(adScope);
+                if (container && container!==node) {
+                    let base;
+                    if (container.hasAttribute('data-ad-slot')) base = container.localName+'[data-ad-slot]';
+                    else if (container.id && !generated(container.id)) base = '#'+CSS.escape(container.id);
+                    else {
+                        const classes=[...container.classList].filter(value=>!generated(value)).slice(0,2);
+                        if(classes.length) base=container.localName+classes.map(value=>'.'+CSS.escape(value)).join('');
+                    }
+                    if(base) selector = `${base}:has(${leaf})`;
+                    evidence += ' Inside a marked advertising container.';
+                } else {
+                    if (node.matches('img') && node.closest('a')) selector = `a:has(${leaf})`;
+                    evidence += ' Advertising role is unverified; confirm visually.';
+                }
+                add(selector,evidence,`Hide content mentioning ${word}`);
+            }
+            return {host:location.hostname, observations, candidates:result};
         }
         if (selector.trim()) add(selector.trim(), 'The explicit selector you supplied.');
-        const generated = value => /[a-f0-9]{8,}|[0-9]{8,}|[a-f0-9]{8}-[a-f0-9-]{27,}/i.test(value) || (value.length >= 20 && /[0-9]/.test(value) && /[a-z]/i.test(value));
+
         for (let depth = 0; element && depth < 4; depth++, element = element.parentElement) {
             const tag = element.localName;
             if (['html','body','script','style','template'].includes(tag)) break;
@@ -82,9 +138,9 @@ const ADVHelp = (() => {
         return {host:location.hostname, observations, candidates:result};
     }
 
-    async function page(mode, selector, selectors = [], html = '') {
+    async function page(mode, selector, selectors = [], html = '', terms = []) {
         if (!host || !Number.isInteger(tab?.id)) throw new Error('Open a permitted web page first.');
-        const results = await browser.scripting.executeScript({target:{tabId:tab.id}, func:inspectDocument, args:[mode, selector, selectors, html]});
+        const results = await browser.scripting.executeScript({target:{tabId:tab.id}, func:inspectDocument, args:[mode, selector, selectors, html, terms]});
         const result = results.find(item=>item.frameId === 0)?.result || results[0]?.result;
         if (!result || result.host !== host) throw new Error('The page changed. Reopen ADV before inspecting.');
         return result;
@@ -97,21 +153,32 @@ const ADVHelp = (() => {
         if (draft.host === host && draft.selector) showRule(draft.selector);
     }
     async function investigate(withQuestion) {
+        const draftRevision=globalThis.ADVDraft?.revision;
         inspect.disabled = ask.disabled = true;
         output.textContent = withQuestion ? 'Inspecting the document and asking the on-device guide…' : 'Inspecting this document…';
         try {
             const state = await browser.runtime.sendMessage({operation:'list'});
             if (state.error) throw new Error(state.error);
             const rules = state.rules.filter(rule=>!rule.deleted && rule.host === host);
-            const snapshot = await page('inspect', input.value.trim(), rules.slice(0,80).map(rule=>rule.selector), markup.value);
+            const query = withQuestion ? question.value.trim() : '';
+            if (withQuestion && !query) throw new Error('Describe what you want to hide first.');
+            if (withQuestion && !input.value.trim() && !markup.value.trim()) {
+                const intent = await browser.runtime.sendMessage({operation:'assist',request:{host,question:query,candidates:[],observations:[],history:[],phase:'interpret'}});
+                const explicit = /fanza|ファンザ/i.test(query) ? ['FANZA','ファンザ'] : /\bdmm\b/i.test(query) ? ['DMM'] : [];
+                const ambiguous = /don't|do not|except|以外|消さない|残して/i.test(query);
+                const fallback = !ambiguous && /hide|block|remove|非表示|隠|消|遮断/i.test(query) ? explicit : [];
+                searchTerms = intent?.searchTerms?.length ? intent.searchTerms : (intent?.modelStatus === 'On-device guide available.' ? [] : (fallback.length ? fallback : searchTerms));
+                if (!searchTerms.length) throw new Error('Name a brand or domain, or select an element with the picker.');
+            }
+            const discovery = withQuestion && !input.value.trim() && !markup.value.trim();
+            const snapshot = await page(discovery ? 'discover' : 'inspect', input.value.trim(), rules.slice(0,80).map(rule=>rule.selector), markup.value, searchTerms);
+
             const currentScope = JSON.stringify([host,input.value.trim(),markup.value]);
             if (scope !== currentScope) { history = []; conversation.replaceChildren(); scope = currentScope; }
-            const query = withQuestion ? question.value.trim() : '';
-            if (withQuestion && !query) throw new Error('Enter a question first.');
             const report = await browser.runtime.sendMessage({operation:'assist', request:{...snapshot, question:query, history}});
             if (report.error) throw new Error(report.error);
             if (!Array.isArray(report.findings) || !Array.isArray(report.candidates)) throw new Error('Invalid guide response.');
-            output.textContent = report.modelStatus + (rules.length > 80 ? ' Only the first 80 rules were inspected.' : '');
+            output.textContent = (discovery ? `Search scope: ${searchTerms.join(', ')}. ` : '') + (discovery && !snapshot.candidates.length ? 'No explicit brand evidence found in URLs or image descriptions. Select the ad with the picker. ' : '') + report.modelStatus + (rules.length > 80 ? ' Only the first 80 rules were inspected.' : '');
             findings.replaceChildren(); candidates.replaceChildren();
             for (const finding of report.findings) {
                 const row = document.createElement('li'); const code = document.createElement('code'); code.textContent = finding.selector;
@@ -125,32 +192,45 @@ const ADVHelp = (() => {
                 while (conversation.children.length >= 8) conversation.firstElementChild.remove();
             } else conversation.replaceChildren();
             conversation.append(answer);
+            const confirmed = discovery ? report.candidates.filter((candidate,index)=>candidate.count>0 && (candidate.reason.includes('Inside a marked advertising container.') || report.suggestedIndex===index)) : [];
+            if (confirmed.length && globalThis.ADVDraft && ADVDraft.revision===draftRevision && !document.getElementById('selectors').value.trim()) {
+                ADVDraft.stage(confirmed.map(candidate=>candidate.selector).join('\n'), `Proposed: hide content mentioning ${searchTerms.join(' / ')}`);
+            }
+
             for (const [index,candidate] of report.candidates.entries()) {
-                const row = document.createElement('li'); const code = document.createElement('code'); code.textContent = candidate.selector;
+                const row = document.createElement('li');
+                const title = document.createElement('strong'); title.textContent = candidate.label || 'Hide matching page content';
+                const details = document.createElement('details'); const summary = document.createElement('summary'); summary.textContent = 'Technical condition';
+                const code = document.createElement('code'); code.textContent = candidate.selector; details.append(summary,code);
                 const note = document.createElement('p'); note.textContent = `${candidate.reason} ${candidate.count ?? 'Unknown'} match(es) in this document.` + (report.suggestedIndex === index ? ' Suggested by the guide.' : '');
                 const preview = document.createElement('button'); preview.textContent = 'Preview matches';
-                const edit = document.createElement('button'); edit.textContent = 'Copy to rule editor'; edit.disabled = true;
+                const edit = document.createElement('button'); edit.textContent = 'Use in draft'; edit.disabled = true;
                 preview.onclick = async () => {
                     edit.disabled = true;
                     try {
                         const result = await page('preview',candidate.selector);
                         output.textContent = `${result.count} match(es); visible matches outlined for 10 seconds (up to 200). Already hidden elements have no visible outline.`;
                         edit.disabled = result.count === 0;
+                        if(document.documentElement.classList.contains('workspace')) await browser.tabs.update(tab.id,{active:true});
                     } catch (error) { output.textContent = error.message; }
                 };
                 edit.onclick = () => {
                     const editor = document.getElementById('selectors');
-                    const lines = editor.value.split(/\r?\n/).filter(Boolean);
-                    if (!lines.includes(candidate.selector)) lines.push(candidate.selector);
-                    editor.value = lines.join('\n'); editor.scrollIntoView({block:'center'}); editor.focus();
-                    output.textContent = 'Copied to the normal editor. Review it and use Save rules; no rule has been saved or removed.';
+                    if (globalThis.ADVDraft) ADVDraft.propose(candidate.selector,candidate.label || 'Hide matching content');
+                    else {
+                        const lines=editor.value.split(/\r?\n/).filter(Boolean);
+                        if(!lines.includes(candidate.selector))lines.push(candidate.selector);
+                        editor.value=lines.join('\n');
+                    }
+                    editor.scrollIntoView({block:'center'}); editor.focus();
+                    output.textContent = 'Added to the draft. Review its scope, preview the targets, then apply. No rule has been saved.';
                 };
-                row.append(code,note,preview,edit); candidates.append(row);
+                row.append(title,note,details,preview,edit); candidates.append(row);
             }
         } catch (error) { output.textContent = error.message; }
         finally { inspect.disabled = ask.disabled = false; }
     }
     inspect.onclick = () => investigate(false);
     ask.onclick = () => investigate(true);
-    return {inspectDocument, showRule, loadDraft};
+    return {inspectDocument, page, showRule, loadDraft};
 })();
