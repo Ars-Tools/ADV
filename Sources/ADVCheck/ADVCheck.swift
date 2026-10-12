@@ -157,7 +157,7 @@ final class PageProbe: NSObject, WKNavigationDelegate {
     func verifyWorkspace(resourceDirectory: URL) async throws {
         var components = URLComponents(url: resourceDirectory.appendingPathComponent("popup.html"), resolvingAgainstBaseURL: false)!
         components.query = "workspace=1&tabId=1"
-        for width in [1200.0, 390.0] {
+        for width in [1200.0, 800.0, 390.0] {
             webView.frame.size = NSSize(width: width, height: 800)
             try await load(components.url!)
             let valid = try await webView.evaluateJavaScript("""
@@ -166,10 +166,19 @@ final class PageProbe: NSObject, WKNavigationDelegate {
                 const draft = document.querySelector('#draft-panel').getBoundingClientRect();
                 const saved = document.querySelector('#saved-panel').getBoundingClientRect();
                 const wide = window.innerWidth > 980;
+                const medium = window.innerWidth > 620;
+                const panels = [...document.querySelectorAll('.panel')];
+                const consistentPadding = panels.every(panel => {
+                    const css = getComputedStyle(panel);
+                    return ['paddingLeft','paddingRight','paddingTop','paddingBottom'].every(key => parseFloat(css[key]) === 20);
+                });
+                const field = document.querySelector('#help-question').getBoundingClientRect();
+                const order = wide ? help.left < draft.left && draft.left < saved.left
+                    : medium ? help.left < draft.left && saved.top > help.top && saved.top > draft.top
+                             : help.top < draft.top && draft.top < saved.top;
                 return document.documentElement.classList.contains('workspace') &&
-                  document.body.scrollWidth <= window.innerWidth &&
-                  (wide ? draft.left < saved.left && saved.left < help.left
-                        : help.top < draft.top && draft.top < saved.top);
+                  document.body.scrollWidth <= window.innerWidth && consistentPadding &&
+                  field.left >= help.left + 20 && field.right <= help.right - 20 && order;
             })()
             """) as? Bool
             guard valid == true else { throw NSError(domain: "ADVCheck", code: 13, userInfo: [NSLocalizedDescriptionKey: "Workspace layout failed at \(width)px."] ) }
