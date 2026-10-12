@@ -1,33 +1,36 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ADV</title><link rel="stylesheet" href="popup.css"></head>
+<title>ADV · Personal control</title><link rel="stylesheet" href="popup.css"></head>
 <body><header><div><p class="eyebrow">PERSONAL SAFARI FILTER</p><h1>ADV</h1></div><div class="mark" aria-hidden="true"><i></i><i></i><i></i></div></header>
-<p class="tagline">Less noise. More space.</p><p id="site">Loading site…</p>
-<p id="network" class="hint" role="status">Checking network filters…</p>
-<p id="activity" class="hint" role="status">Checking page activity…</p>
-<section><h2><span class="index red">01</span> Select content</h2>
-<button id="pick" disabled>Pick elements to hide</button>
-<p class="hint">Click or tap several elements on the page, review your selections, then save them together. Rules apply to this exact hostname on every page.</p>
-<p id="status" role="status">Loading rules…</p></section>
-<section><h2><span class="index blue">02</span> Add in bulk</h2>
-<label for="selectors">CSS selectors, one per line</label>
-<textarea id="selectors" rows="5" placeholder="#sidebar-ad&#10;.sponsored-card&#10;aside .advertisement" spellcheck="false"></textarea>
-<p class="hint">Save up to 1000 selectors for this exact hostname. Existing rules are kept; duplicates are skipped.</p>
-<button id="save-bulk" disabled>Save rules</button><p id="bulk-status" class="hint" role="status"></p></section>
-<section><h2><span class="index blue">03</span> Rules for this site</h2><ul id="rules"></ul></section>
-<section><h2><span class="index red">04</span> Blocked sources · all sites</h2>
-<p class="hint">Block an advertising host and its subdomains across websites. Normal resources on the same host will also be blocked. Opening the site itself is allowed.</p>
-<label for="source-host">Advertising source hostname</label><input id="source-host" placeholder="ads.example.com" spellcheck="false" autocapitalize="none">
-<button id="block-source">Block source everywhere</button><p id="source-status" class="hint" role="status"></p><ul id="blocked-sources"></ul>
-<p class="hint">Source rules persist in this Safari profile. They do not sync with iCloud yet. Reload pages after changing source rules.</p></section>
-<details id="help"><summary>Rule help · optional</summary>
-<p class="hint">Read-only investigation of this document. Explicit rules stay in the normal editor. No automatic saving or deletion. Frames and Shadow DOM are not inspected.</p>
-<label for="help-selector">Element or saved CSS selector</label><input id="help-selector" placeholder=".advertisement" spellcheck="false">
-<label for="help-html">Or paste an HTML fragment (optional)</label><textarea id="help-html" rows="3" maxlength="10000" spellcheck="false" placeholder="Paste the outer advertising container"></textarea>
-<button id="help-inspect">Inspect rules and selection</button>
-<label for="help-question">Ask the guide</label><textarea id="help-question" rows="2" maxlength="1500" placeholder="Can I hide the whole container using a stable condition?"></textarea>
-<button id="help-ask">Ask on-device guide</button><p id="help-status" class="hint" role="status">Inspection works without Apple Intelligence. Conversation requires a supported device running macOS or iOS 26.</p>
-<div id="help-conversation" aria-live="polite"></div><ul id="help-findings" aria-label="Rule diagnostics"></ul><ul id="help-candidates" aria-label="Candidate selectors"></ul>
-</details>
-<p class="hint">Cloud sync runs when you open the signed ADV app. Reload pages after syncing.</p>
+<p class="tagline">Choose what stays.</p><p id="site">Loading site…</p>
+<button id="open-workspace" disabled>Open full workspace ↗</button>
+<details class="system-status"><summary>Extension &amp; sync status</summary><p id="network" class="hint" role="status">Checking network filters…</p><p id="activity" class="hint" role="status">Checking page activity…</p><p id="status" role="status">Loading rules…</p></details>
+<main id="workspace">
+<section id="help" class="panel conversation-panel"><h2><span class="index red">01</span> Describe your intent</h2>
+<p class="intro">Tell ADV what you want to hide. It will investigate and propose visible conditions. You decide what to apply.</p>
+<label for="help-question">What would you like to change?</label><textarea id="help-question" rows="3" maxlength="1500" placeholder="Hide the FANZA ads on this page."></textarea>
+<button id="help-ask">Find &amp; propose</button><button id="help-inspect">Check existing filters</button>
+<p id="help-status" class="hint" role="status">On-device conversation requires Apple Intelligence. Manual selection and rule inspection remain available.</p>
+<div id="help-conversation" aria-live="polite"></div>
+<details><summary>Use a selected element or HTML</summary><label for="help-selector">Element or saved CSS selector</label><input id="help-selector" placeholder=".advertisement" spellcheck="false">
+<label for="help-html">HTML fragment (optional)</label><textarea id="help-html" rows="3" maxlength="10000" spellcheck="false" placeholder="Paste the outer advertising container"></textarea></details>
+<details><summary>Investigation details</summary><p class="hint">Investigates up to 500 links, image descriptions, and iframe URLs in the top document. Brand mentions are clues, not proof of advertising. Frames and Shadow DOM are not inspected.</p><ul id="help-findings" aria-label="Rule diagnostics"></ul></details>
+</section>
+<section id="draft-panel" class="panel"><h2><span class="index blue">02</span> Review your draft</h2>
+<p id="draft-title" class="intro">Nothing is staged yet.</p><p id="draft-scope" class="hint">Hide matching elements on this exact website. Existing filters stay in place.</p>
+<ul id="help-candidates" aria-label="Candidate selectors"></ul>
+<button id="pick" disabled>Select on the page</button>
+<p class="hint">Prefer pointing? Pick unwanted elements, then use Help with last selection to return here.</p>
+<details id="draft-details"><summary>Conditions · view or edit CSS</summary><label for="selectors">CSS selectors, one per line</label><textarea id="selectors" rows="5" placeholder="#sidebar-ad&#10;.sponsored-card&#10;aside .advertisement" spellcheck="false"></textarea></details>
+<button id="preview-draft" disabled>Preview draft on page</button><button id="save-bulk" disabled>Apply draft</button><button id="clear-draft">Discard draft</button>
+<p id="bulk-status" class="hint" role="status">Preview before applying. Nothing is saved by conversation alone.</p>
+<details><summary>Block a source domain instead</summary><p class="hint">This blocks requests across all websites, rather than hiding a page element.</p><label for="source-host">Source hostname</label><input id="source-host" placeholder="ads.example.com" spellcheck="false" autocapitalize="none"><button id="block-source">Block source everywhere</button><p id="source-status" class="hint" role="status"></p></details>
+</section>
+<section id="saved-panel" class="panel"><h2><span class="index blue">03</span> Your saved filters</h2>
+<p class="intro">Conditions stay visible and editable. Conversation is an alternative way to build a draft.</p>
+<h3>Hidden content · this website</h3><ul id="rules"></ul>
+<h3>Blocked domains · all websites</h3><ul id="blocked-sources"></ul>
+<p class="hint">Source blocks remain in this Safari profile. Cosmetic filters can sync when signed iCloud sharing is configured.</p>
+</section>
+</main>
 <script src="help.js"></script><script src="popup.js"></script></body></html>
