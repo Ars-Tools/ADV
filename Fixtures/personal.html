@@ -11,7 +11,16 @@ let dynamicRules = [{id:42, priority:1, action:{type:'allow'}, condition:{urlFil
 let failSourceUpdate = false;
 let failSourceSave = false;
 const clone = value => JSON.parse(JSON.stringify(value));
+const toolbarIcons = new Map();
+const toolbarTitles = new Map();
+const tabEvents = {updated:[], activated:[], removed:[]};
+let matchedRules = [];
+let failMatchedRules = false;
 window.browser = {
+  action: {
+    async setIcon({tabId,path}) { toolbarIcons.set(tabId,path); },
+    async setTitle({tabId,title}) { toolbarTitles.set(tabId,title); }
+  },
   storage: {local: {
     async get() { return clone(saved); },
     async set(value) {
@@ -25,7 +34,11 @@ window.browser = {
       if (failSourceUpdate) { failSourceUpdate = false; throw new Error('DNR unavailable'); }
       dynamicRules = [...dynamicRules.filter(rule=>!removeRuleIds.includes(rule.id)), ...clone(addRules)];
     },
-    async getEnabledRulesets() { return ['advertising']; }
+    async getEnabledRulesets() { return ['advertising']; },
+    async getMatchedRules() {
+      if (failMatchedRules) throw new Error('activeTab permission not granted');
+      return {rulesMatchedInfo:clone(matchedRules)};
+    }
   },
   runtime: {
     onMessage: {addListener(handler) { handlers.push(handler); }},
@@ -42,9 +55,48 @@ window.browser = {
     async sendMessage(message) { return await handlers[0](message, {tab:{id:1,url:location.href},url:location.href}); }
   },
   tabs: {
+    onUpdated: {addListener(handler) { tabEvents.updated.push(handler); }},
+    onActivated: {addListener(handler) { tabEvents.activated.push(handler); }},
+    onRemoved: {addListener(handler) { tabEvents.removed.push(handler); }},
     async query() { return [{id:1}]; },
     async sendMessage(id,message) { for (const handler of handlers.slice(1)) handler(message); }
   }
+};
+window.runADVToolbarTests = async function() {
+  const results = [];
+  function check(condition,name) { if (!condition) throw new Error(name); results.push(name); }
+  const base = Date.now();
+  const report = (frameId,blocked,document='first',started=base) => handlers[0](
+    {operation:'activity',blocked,document,started}, {tab:{id:2,url:location.href},frameId});
+  await report(0,false);
+  check(toolbarIcons.get(2)==='toolbar-idle.svg','Toolbar opens the lid when no blocking is observed');
+  await report(1,true);
+  check(toolbarIcons.get(2)==='toolbar.svg','Blocking in a subframe closes the toolbar lid');
+  await report(0,false);
+  check(toolbarIcons.get(2)==='toolbar.svg','An idle main frame does not override a blocking subframe');
+  await report(1,false);
+  check(toolbarIcons.get(2)==='toolbar-idle.svg','The lid opens when the last cosmetic block disappears');
+  await report(0,false,'new',base+1);
+  await report(0,true,'first',base);
+  check(toolbarIcons.get(2)==='toolbar-idle.svg','Late activity from a previous document cannot overwrite the new page');
+  matchedRules=[{tabId:2,timeStamp:base+100,rule:{ruleId:1,rulesetId:'advertising'}}];
+  await handlers[0]({operation:'toolbarStatus',tabId:2},{});
+  check(toolbarIcons.get(2)==='toolbar.svg','A confirmed DNR match closes the lid without a cosmetic match');
+  tabEvents.updated.at(-1)(2,{status:'loading'});
+  await report(0,false,'next',Date.now());
+  check(toolbarIcons.get(2)==='toolbar-idle.svg','Navigation clears network activity from the previous page');
+  failMatchedRules=true;
+  await handlers[0]({operation:'toolbarStatus',tabId:3},{});
+  check(toolbarTitles.get(3).includes('unavailable'),'Unavailable DNR feedback is reported as unknown rather than disabled');
+  failMatchedRules=false;
+  const originalNow=Date.now;
+  try {
+    await report(1,true,'frame',base+2);
+    Date.now=()=>originalNow()+31000;
+    await report(0,false,'next',base+10);
+    check(toolbarIcons.get(2)==='toolbar-idle.svg','Expired subframe reports cannot leave the blocking icon stuck');
+  } finally { Date.now=originalNow; }
+  return JSON.stringify(results);
 };
 const attach = Element.prototype.attachShadow;
 let pickerRoot;
