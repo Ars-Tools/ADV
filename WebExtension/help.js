@@ -231,24 +231,16 @@ const ADVHelp = (() => {
                 const details = document.createElement('details'); const summary = document.createElement('summary'); summary.textContent = 'Technical condition';
                 const code = document.createElement('code'); code.textContent = candidate.selector; details.append(summary,code);
                 const note = document.createElement('p'); note.textContent = `${candidate.reason} ${candidate.count ?? 'Unknown'} match(es) in this document.` + (report.suggestedIndex === index ? ' Suggested by the guide.' : '');
-                const preview = document.createElement('button'); preview.textContent = 'Preview matches';
-                const edit = document.createElement('button'); edit.textContent = 'Use in draft'; edit.disabled = true;
-                preview.onclick = async () => {
-                    edit.disabled = true;
+                const choose = document.createElement('button'); choose.textContent = 'Select & preview';
+                choose.onclick = async () => {
+                    choose.disabled = true;
                     try {
-                        const result = await page('preview',candidate.selector);
-                        output.textContent = `${result.count} match(es); visible matches outlined for 10 seconds (up to 200). Already hidden elements have no visible outline.`;
-                        edit.disabled = result.count === 0;
-                        if(document.documentElement.classList.contains('workspace')) await browser.tabs.update(tab.id,{active:true});
+                        await ADVDraft.choose(candidate.selector,candidate.label || 'Hide matching content');
+                        output.textContent = 'Selected in the draft. Review the preview results, then use Apply draft to save.';
                     } catch (error) { output.textContent = error.message; }
+                    finally { choose.disabled = false; }
                 };
-                edit.onclick = () => {
-                    const editor = document.getElementById('selectors');
-                    ADVDraft.propose(candidate.selector,candidate.label || 'Hide matching content');
-                    editor.scrollIntoView({block:'center'}); editor.focus();
-                    output.textContent = 'Added to the draft. Review its scope, preview the targets, then apply. No rule has been saved.';
-                };
-                row.append(title,note,details,preview,edit); candidates.append(row);
+                row.append(title,note,details,choose); candidates.append(row);
             }
         } catch (error) { output.textContent = error.message; }
         finally { inspect.disabled = ask.disabled = false; }
