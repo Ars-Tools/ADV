@@ -25,6 +25,7 @@
         scheduled = false;
         if (document.hidden) return;
         const active = new Set();
+        let handled = false;
         for (const player of document.querySelectorAll(playerSelector)) {
             const isAd = player.classList.contains('ad-showing') || player.classList.contains('ad-interrupting');
             if (!isAd) {
@@ -34,7 +35,7 @@
             // Click only an explicit, visible skip control in the ad player.
             const skip = [...player.querySelectorAll(skipSelector)].find(button => isVisible(button) &&
                 !button.disabled && button.getAttribute('aria-disabled') !== 'true');
-            if (skip) skip.click();
+            if (skip) { skip.click(); handled = true; }
             if (!player.classList.contains('ad-showing') && !player.classList.contains('ad-interrupting')) continue;
             // Require a second, visible ad signal before touching media playback.
             // A class alone can remain stale while a regular video starts.
@@ -52,6 +53,7 @@
                 continue;
             }
             video.muted = true;
+            handled = true;
             try {
                 // For an identified finite ad, trigger its normal end transition.
                 // Do not seek live streams or unknown/long timelines.
@@ -67,6 +69,8 @@
         for (const [video, state] of saved) {
             if (!active.has(video) || !video.isConnected) restore(video, state);
         }
+        const displayAds = 'ytd-ad-slot-renderer, ytd-display-ad-renderer, ytd-in-feed-ad-layout-renderer, ytd-promoted-sparkles-web-renderer, ytd-promoted-sparkles-text-search-renderer, ytd-action-companion-ad-renderer, ytd-video-masthead-ad-v3-renderer, ytm-promoted-sparkles-web-renderer, ytm-companion-ad-renderer, .ytp-ad-overlay-container';
+        globalThis.__advReportYouTube?.(handled || [...document.querySelectorAll(displayAds)].some(node => getComputedStyle(node).display === 'none'));
     }
 
     function schedule() {
