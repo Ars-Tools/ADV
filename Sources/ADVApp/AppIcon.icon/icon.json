@@ -1,0 +1,37 @@
+{
+  "fill": {
+    "solid": "srgb:0.96471,0.94902,0.91373,1.00000"
+  },
+  "groups": [
+    {
+      "layers": [
+        {
+          "image-name": "Mark.svg",
+          "name": "ADV geometry",
+          "glass": false
+        }
+      ],
+      "name": "ADV",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0
+      },
+      "specular": false,
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  },
+  "fill-specializations": [
+    {
+      "appearance": "dark",
+      "value": {
+        "solid": "srgb:0.96471,0.94902,0.91373,1.00000"
+      }
+    }
+  ]
+}
