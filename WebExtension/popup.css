@@ -51,7 +51,8 @@ summary:focus-visible { outline:none; box-shadow:inset 0 -3px var(--blue); }
 .intro { font-size:13px; line-height:1.5; }
 #help-ask { background:var(--ink); color:var(--paper); }
 #help-candidates { max-height:none; }
-#help-candidates strong { font-size:14px; }
+#help-candidates strong { font-size:14px; overflow-wrap:anywhere; }
+#draft-domain { font-weight:700; overflow-wrap:anywhere; }
 #draft-panel button { margin:8px 6px 0 0; }
 #preview-draft, #save-bulk { width:100%; }
 h3 { font-size:13px; }
