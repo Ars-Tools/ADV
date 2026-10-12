@@ -8,6 +8,7 @@ let sourcesReady = false;
 // Activity is ephemeral and tab-specific; never persist browsing history.
 const activity = new Map();
 const networkChecks = [];
+const helpDrafts = new Map();
 function tabActivity(tabId) {
     if (!activity.has(tabId)) activity.set(tabId, {frames: new Map(), since: Date.now(), network: false, networkKnown: false});
     return activity.get(tabId);
@@ -52,11 +53,12 @@ browser.tabs.onUpdated.addListener((tabId, change) => {
     if (change.status === 'loading') {
         // Invalidate immediately so pending checks cannot repaint the old page.
         activity.delete(tabId);
+        helpDrafts.delete(tabId);
         toolbarTask(() => updateToolbar(tabId));
     } else if (change.status === 'complete') toolbarTask(() => updateToolbar(tabId, true));
 });
 browser.tabs.onActivated.addListener(({tabId}) => toolbarTask(() => updateToolbar(tabId, true)));
-browser.tabs.onRemoved.addListener(tabId => activity.delete(tabId));
+browser.tabs.onRemoved.addListener(tabId => { activity.delete(tabId); helpDrafts.delete(tabId); });
 setInterval(() => toolbarTask(async () => {
     for (const tab of await browser.tabs.query({active: true, currentWindow: true})) {
         if (tab.id !== undefined) await updateToolbar(tab.id, true);
@@ -150,6 +152,25 @@ async function state() {
 }
 
 async function process(message, sender) {
+    if (message?.operation === 'helpDraft') {
+        if (!sender.tab || typeof message.selector !== 'string' || message.selector.length > 2048) throw new Error('Invalid help selection.');
+        const page = new URL(sender.url || sender.tab.url);
+        const draft = {host:page.hostname, selector:message.selector, expires:Date.now() + 600000};
+        helpDrafts.set(sender.tab.id, draft);
+        setTimeout(() => { if (helpDrafts.get(sender.tab.id) === draft) helpDrafts.delete(sender.tab.id); }, 600000);
+        return {stored:true};
+    }
+    if (message?.operation === 'helpDraftGet') {
+        if (sender.tab || !Number.isInteger(message.tabId)) throw new Error('Invalid help request.');
+        const draft = helpDrafts.get(message.tabId);
+        helpDrafts.delete(message.tabId);
+        return draft && draft.expires > Date.now() ? draft : {};
+    }
+    if (message?.operation === 'assist') {
+        if (sender.tab || JSON.stringify(message.request).length > 100000) throw new Error('Invalid assistance request.');
+        // Inference must not occupy the serialized rule-write queue.
+        return browser.runtime.sendNativeMessage('ADV', message);
+    }
     if (message?.operation === 'activity') {
         if (!sender.tab || typeof message.blocked !== 'boolean' || typeof message.document !== 'string' ||
             message.document.length > 64 || !Number.isFinite(message.started)) throw new Error('Invalid activity report.');
@@ -224,6 +245,7 @@ async function process(message, sender) {
 
 browser.runtime.onMessage.addListener((message, sender) => {
     if (message?.operation === "refresh") return;
+    if (message?.operation === 'assist') return process(message, sender).catch(error => ({error:error.message}));
     const pending = queue.then(() => process(message, sender));
     queue = pending.catch(() => {});
     return pending.catch(error => ({error: error.message}));
