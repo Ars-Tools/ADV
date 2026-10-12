@@ -136,6 +136,15 @@ and preview it immediately. No copying or CSS entry is needed. Choosing another
 candidate replaces the current draft; existing saved filters remain unchanged.
 Technical conditions stay available under **Conditions · view or edit CSS**.
 For a manually edited draft, select **Preview draft on page**.
+Suggestions can also offer **Block domain · all websites** for resource hosts
+observed within inspected candidates. The guide can recommend these when you
+ask to block a provider across sites; it cannot invent a hostname. Selecting one
+shows the literal host and its global scope. Preview outlines reference elements,
+not a simulation of network blocking. Only **Apply draft** installs the DNR rule;
+the reference CSS is not saved. Domains and subdomains are blocked for resource
+requests, while top-level navigation remains allowed. Normal resources on that
+host may also be affected. Saved conditions and already-blocked domains are not
+offered again; equivalent-looking CSS alternatives retain distinct condition labels.
 Visible targets are outlined for ten seconds. **Apply draft** is enabled only after
 preview; changed conditions, a reloaded page, or a changed match count require a
 new preview. Conversation and staging never save filters. The workspace can switch
