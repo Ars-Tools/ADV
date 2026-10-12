@@ -41,6 +41,7 @@ window.browser = {
     }
   },
   runtime: {
+    getURL(path) { return 'safari-web-extension://adv/' + path; },
     onMessage: {addListener(handler) { handlers.push(handler); }},
     async sendNativeMessage(application, message) {
       if (nativeFailure) throw new Error("Native unavailable");
@@ -49,6 +50,11 @@ window.browser = {
         const merged = new Map(remote.map(rule=>[rule.id,rule]));
         for (const rule of message.rules) merged.set(rule.id,clone(rule));
         remote = [...merged.values()];
+      }
+      if (message.operation === 'replace') {
+        const rule = remote.find(rule=>rule.id===message.id && !rule.deleted && rule.host===message.host);
+        if (!rule || rule.modified!==message.expectedModified) return {error:'Rule changed'};
+        remote=remote.map(item=>item.id===rule.id ? {...rule,selector:message.selector,modified:Math.max(Date.now(),rule.modified+1)} : item);
       }
       if (message.operation === 'remove') {
         const rule = remote.find(rule=>rule.id===message.id);
@@ -354,6 +360,7 @@ window.runADVHelpTests = async function(helpScript) {
     ? {modelStatus:'Model unavailable.', explanation:'Read-only inspection.', findings:[], candidates:message.request.candidates}
     : oldNative(application,message);
   browser.scripting = {async executeScript({func,args}) { return [{frameId:0,result:func(...args)}]; }};
+  globalThis.ADVDraft = {revision:0, propose(selector) { ui.querySelector('#selectors').value=selector; this.revision++; }};
   try {
     api.showRule('#ad-123456789');
     ui.querySelector('#help-inspect').click();
@@ -369,7 +376,7 @@ window.runADVHelpTests = async function(helpScript) {
     check(!ui.querySelector('#help-inspect').disabled && !ui.querySelector('#help-ask').disabled,'Help restores its controls after a completed inspection');
   } finally {
     browser.runtime.sendMessage=oldSend; browser.runtime.sendNativeMessage=oldNative; browser.scripting=oldScripting;
-    globalThis.__advHelpPreview?.remove(); delete window.host;delete window.tab;
+    globalThis.__advHelpPreview?.remove(); delete window.host;delete window.tab;delete globalThis.ADVDraft;
   }
 
 
@@ -406,7 +413,7 @@ window.runADVWorkspaceControls = async function(helpScript,popupScript,popupHTML
   ads.innerHTML='<div class="ad-card"><a href="https://ad.fanza.example/banner"><img alt="FANZA ad" width="30" height="30"></a></div><div class="ad-card"><a href="https://ad.games.dmm.com/banner"><img alt="DMM Games" width="30" height="30"></a></div>';
   document.body.append(ui,ads);
   const original={send:browser.runtime.sendMessage,native:browser.runtime.sendNativeMessage,scripting:browser.scripting,query:browser.tabs.query};
-  browser.runtime.sendMessage=message=>handlers[0](message,{});
+  browser.runtime.sendMessage=message=>handlers[0](message,{tab:{id:2},url:browser.runtime.getURL('popup.html')});
   browser.runtime.sendNativeMessage=async(application,message)=>message.operation==='assist'
     ? {modelStatus:'On-device guide available.',searchTerms:['FANZA','DMM'],explanation:'Review FANZA and related DMM content.',findings:[],candidates:message.request.candidates}
     : original.native(application,message);
@@ -424,6 +431,30 @@ window.runADVWorkspaceControls = async function(helpScript,popupScript,popupHTML
     preview.click();await waitFor(()=>!preview.disabled);
     check(!apply.disabled,'A successful target preview enables explicit application');
     const proposed=editor.value;
+    const execute=browser.scripting.executeScript;
+    let release;
+    browser.scripting.executeScript=async request=>{
+      const result=await execute(request);
+      await new Promise(resolve=>{release=resolve;});
+      return result;
+    };
+    preview.click();await waitFor(()=>!!release);
+    editor.value='.ad-card';editor.dispatchEvent(new Event('input'));
+    release();await new Promise(resolve=>setTimeout(resolve,20));
+    check(apply.disabled,'An old preview response cannot approve a draft edited while inspection was pending');
+    browser.scripting.executeScript=execute;
+    editor.value=proposed;editor.dispatchEvent(new Event('input'));preview.click();await waitFor(()=>!preview.disabled);
+    release=undefined;
+    browser.scripting.executeScript=async request=>{
+      const result=await execute(request);
+      await new Promise(resolve=>{release=resolve;});
+      return result;
+    };
+    apply.click();await waitFor(()=>!!release);
+    editor.value='.ad-card';editor.dispatchEvent(new Event('input'));
+    release();await waitFor(()=>ui.querySelector('#bulk-status').textContent.includes('draft changed'));
+    check(JSON.stringify(saved)===before,'Editing during the apply recheck cannot save an obsolete draft');
+    browser.scripting.executeScript=execute;
     editor.value='body';editor.dispatchEvent(new Event('input'));
     check(apply.disabled,'Editing the draft invalidates its previous approval');
     preview.click();await waitFor(()=>!preview.disabled);
