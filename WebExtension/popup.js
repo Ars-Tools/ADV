@@ -38,10 +38,12 @@ document.getElementById('clear-draft').onclick = () => {
 previewDraft.onclick = async () => {
     bulk.disabled = true; previewDraft.disabled = true;
     try {
+        const revision = draftRevision, text = editor.value;
         const selectors = draftSelectors();
         if (editingRule && selectors.length!==1) throw new Error('Edit one condition at a time, or discard this edit to add several.');
         const result = await ADVHelp.page('preview',selectors.join(', '));
-        reviewed = {text:editor.value, host, count:result.count, started:result.started};
+        if (revision !== draftRevision) return;
+        reviewed = {text, host, count:result.count, started:result.started};
         bulk.disabled = result.count===0;
         document.getElementById('bulk-status').textContent = `${result.count} element(s) match this draft. Review the blue outlines before applying. Already hidden elements have no visible outline.`;
         if (document.documentElement.classList.contains('workspace')) await browser.tabs.update(tab.id,{active:true});
@@ -52,17 +54,20 @@ bulk.onclick = async () => {
     bulk.disabled = true;
     const output=document.getElementById('bulk-status');
     try {
+        const revision=draftRevision, rule=editingRule, review=reviewed;
         const selectors=draftSelectors();
-        if (!reviewed || reviewed.text!==editor.value || reviewed.host!==host) throw new Error('Preview the current draft before applying.');
+        if (!review || review.text!==editor.value || review.host!==host) throw new Error('Preview the current draft before applying.');
         const current=await ADVHelp.page('preview',selectors.join(', '));
-        if (current.started!==reviewed.started || current.count!==reviewed.count || !current.count) throw new Error('The page or target count changed. Preview the draft again.');
-        const message=editingRule
-            ? {operation:'replace',id:editingRule.id,expectedModified:editingRule.modified,host,selector:selectors[0]}
+        if (revision!==draftRevision) throw new Error('The draft changed. Preview it again.');
+        if (current.started!==review.started || current.count!==review.count || !current.count) throw new Error('The page or target count changed. Preview the draft again.');
+        const message=rule
+            ? {operation:'replace',id:rule.id,expectedModified:rule.modified,host,selector:selectors[0]}
             : {operation:'addMany',host,selectors};
         const result=await browser.runtime.sendMessage(message);
         if(result.error)throw new Error(result.error);
-        const changed=!!editingRule;
-        await render(); ADVDraft.stage('','Nothing is staged yet.');
+        const changed=!!rule;
+        await render();
+        if (revision===draftRevision) ADVDraft.stage('','Nothing is staged yet.');
         output.textContent=changed ? 'Updated the saved condition.' : `${result.added} condition(s) saved. Existing filters were kept.`;
     } catch(error) { output.textContent=error.message; invalidateDraft(); }
 };
