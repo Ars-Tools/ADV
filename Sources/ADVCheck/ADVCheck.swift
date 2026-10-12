@@ -110,6 +110,10 @@ final class PageProbe: NSObject, WKNavigationDelegate {
         let sourceResults = try JSONDecoder().decode([String].self, from: Data(sourceJSON.utf8))
         guard sourceResults.count == 14 else { throw NSError(domain: "ADVCheck", code: 9) }
         for result in sourceResults { print("PASS: \(result).") }
+        let toolbarJSON = try await runJavaScript("return await window.runADVToolbarTests();", arguments: [:])
+        let toolbarResults = try JSONDecoder().decode([String].self, from: Data(toolbarJSON.utf8))
+        guard toolbarResults.count == 9 else { throw NSError(domain: "ADVCheck", code: 11) }
+        for result in toolbarResults { print("PASS: \(result).") }
     }
 
     func verifyPopup(resourceDirectory: URL) async throws {
