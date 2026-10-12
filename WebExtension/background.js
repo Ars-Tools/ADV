@@ -5,6 +5,63 @@ const sourceKey = "globalBlockedSourcesV1";
 const sourceRuleBase = 100000;
 const sourceLimit = 1000;
 let sourcesReady = false;
+// Activity is ephemeral and tab-specific; never persist browsing history.
+const activity = new Map();
+const networkChecks = [];
+function tabActivity(tabId) {
+    if (!activity.has(tabId)) activity.set(tabId, {frames: new Map(), since: Date.now(), network: false, networkKnown: false});
+    return activity.get(tabId);
+}
+async function updateToolbar(tabId, checkNetwork = false) {
+    const state = tabActivity(tabId);
+    if (checkNetwork && browser.declarativeNetRequest.getMatchedRules) {
+        const now = Date.now();
+        while (networkChecks.length && networkChecks[0] < now - 600000) networkChecks.shift();
+        // Stay below the common five-calls-per-ten-minutes API quota.
+        if (networkChecks.length < 3 && (!state.checked || now - state.checked >= 15000)) {
+            networkChecks.push(now); state.checked = now;
+            try {
+                const result = await browser.declarativeNetRequest.getMatchedRules({tabId, minTimeStamp: state.since});
+                state.network = result.rulesMatchedInfo.some(match => match.tabId === tabId && match.timeStamp >= state.since &&
+                    (!match.rule || match.rule.rulesetId === 'advertising' ||
+                     (match.rule.ruleId >= sourceRuleBase && match.rule.ruleId < sourceRuleBase + sourceLimit)));
+                state.networkKnown = true;
+            } catch { state.networkKnown = false; }
+        }
+    }
+    if (activity.get(tabId) !== state) return; // Navigation superseded an asynchronous check.
+    const blocked = state.network || [...state.frames.values()].some(frame => frame.blocked && Date.now() - frame.seen < 30000);
+    const title = blocked ? 'ADV · Blocking detected on this page'
+        : (state.networkKnown ? 'ADV · No blocking detected on this page' : 'ADV · No blocking observed; network activity unavailable');
+    const icon = blocked ? 'toolbar.svg' : 'toolbar-idle.svg';
+    if (state.icon !== icon) {
+        await browser.action.setIcon({tabId, path: icon});
+        state.icon = icon;
+    }
+    if (state.title !== title) {
+        await browser.action.setTitle({tabId, title});
+        state.title = title;
+    }
+    return {blocked, networkKnown: state.networkKnown};
+}
+
+function toolbarTask(task) {
+    queue = queue.then(task).catch(() => {});
+}
+browser.tabs.onUpdated.addListener((tabId, change) => {
+    if (change.status === 'loading') {
+        // Invalidate immediately so pending checks cannot repaint the old page.
+        activity.delete(tabId);
+        toolbarTask(() => updateToolbar(tabId));
+    } else if (change.status === 'complete') toolbarTask(() => updateToolbar(tabId, true));
+});
+browser.tabs.onActivated.addListener(({tabId}) => toolbarTask(() => updateToolbar(tabId, true)));
+browser.tabs.onRemoved.addListener(tabId => activity.delete(tabId));
+setInterval(() => toolbarTask(async () => {
+    for (const tab of await browser.tabs.query({active: true, currentWindow: true})) {
+        if (tab.id !== undefined) await updateToolbar(tab.id, true);
+    }
+}), 210000);
 
 function sourceHost(value) {
     if (typeof value !== "string") throw new Error("Enter a source hostname.");
@@ -93,6 +150,28 @@ async function state() {
 }
 
 async function process(message, sender) {
+    if (message?.operation === 'activity') {
+        if (!sender.tab || typeof message.blocked !== 'boolean' || typeof message.document !== 'string' ||
+            message.document.length > 64 || !Number.isFinite(message.started)) throw new Error('Invalid activity report.');
+        const state = tabActivity(sender.tab.id);
+        const frameId = sender.frameId || 0;
+        const old = state.frames.get(frameId);
+        // A late report from an old document must not replace its successor.
+        if (!old || message.started >= old.started) {
+            if (!frameId) {
+                if (old && old.document !== message.document) {
+                    state.frames.clear(); state.network = false; state.networkKnown = false; state.checked = undefined;
+                    state.since = message.started;
+                } else state.since = Math.min(state.since, message.started);
+            }
+            state.frames.set(frameId, {document: message.document, started: message.started, blocked: message.blocked, seen:Date.now()});
+        }
+        return await updateToolbar(sender.tab.id);
+    }
+    if (message?.operation === 'toolbarStatus') {
+        if (sender.tab || !Number.isInteger(message.tabId)) throw new Error('Invalid toolbar request.');
+        return await updateToolbar(message.tabId, true);
+    }
     if (["sourceList", "sourceAdd", "sourceRemove"].includes(message?.operation)) return processSources(message, sender);
     if (message?.operation === "networkStatus") {
         const enabled = await browser.declarativeNetRequest.getEnabledRulesets();
