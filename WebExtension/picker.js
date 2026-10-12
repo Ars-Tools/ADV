@@ -20,6 +20,8 @@
     button:disabled, #save:disabled { background:#f6f2e9; color:#55524a; border-color:#aaa69e; cursor:default; }
     :focus-visible { outline:3px solid #1f40a8; outline-offset:3px; }
     #message { overflow-wrap:anywhere; }
+    #similar-label { display:flex; align-items:center; gap:8px; font-size:12px; }
+    #similar { width:auto; margin:0; padding:0; }
     ul { padding:0; margin:8px 0; list-style:none; max-height:120px; overflow:auto; }
     li { display:flex; align-items:center; gap:8px; border-top:1px solid #aaa69e; padding:6px 0; }
     code { flex:1; min-width:0; overflow-wrap:anywhere; font-size:12px; }
@@ -28,12 +30,14 @@
     <strong>ADV · Pick elements to hide</strong><p id="message" role="status">Click or tap unwanted elements one after another. Click the same element again to deselect. Escape cancels.</p>
     <ul id="selected" aria-label="Selected filters"></ul>
     <input id="selector" aria-label="Last selected CSS selector" placeholder="Select elements on the page" disabled>
+    <label id="similar-label"><input id="similar" type="checkbox" disabled>Match similar elements by class or tag</label>
     <button id="save" disabled>Hide selected elements</button><button id="cancel">Cancel</button>
     <div id="sources"></div><p id="source-message">Source blocking applies across websites. Shared image or video hosts may also serve normal content.</p>
     <button id="block-sources" disabled>Block sources everywhere</button></div>`;
     document.documentElement.append(container);
     const outline = root.getElementById("outline");
     const input = root.getElementById("selector");
+    const similar = root.getElementById('similar');
     const save = root.getElementById("save");
     const message = root.getElementById("message");
     const selections = [];
@@ -106,7 +110,7 @@
             || /\d{8,}/.test(value)
             || (value.length >= 20 && /[a-z]/i.test(value) && /\d/.test(value));
     }
-    function selectorFor(element) {
+    function selectorFor(element, reusable = false) {
         const parts = [];
         for (let current = element; current && current !== document.body; current = current.parentElement) {
             // Attribute presence survives rotating slot IDs and identifies other ad slots too.
@@ -116,13 +120,14 @@
                 parts.unshift(`${current.localName}[${marker}]`);
                 return parts.join(' > ');
             }
-            if (current.id && !looksGenerated(current.id)) {
+            if (!reusable && current.id && !looksGenerated(current.id)) {
                 const id = `#${CSS.escape(current.id)}`;
                 if (document.querySelectorAll(id).length === 1) { parts.unshift(id); break; }
             }
             let part = current.localName;
             const classes = Array.from(current.classList).filter(value => !looksGenerated(value)).slice(0, 3);
             if (classes.length) part += classes.map(value => `.${CSS.escape(value)}`).join("");
+            if (reusable) return part;
             const unpositioned = [part, ...parts].join(' > ');
             if (classes.length && document.querySelectorAll(unpositioned).length === 1) return unpositioned;
             const siblings = current.parentElement ? Array.from(current.parentElement.children).filter(node => node.localName === current.localName) : [];
@@ -145,11 +150,12 @@
         root.querySelectorAll('.selected-outline').forEach(node => node.remove());
         for (const selection of selections) {
             try {
-                const element = matchesFor(selection.selector)[0];
-                const rect = element.getBoundingClientRect();
-                const mark = document.createElement('div'); mark.className = 'selected-outline';
-                mark.style.cssText = `left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px`;
-                root.insertBefore(mark, root.getElementById('panel'));
+                for (const element of matchesFor(selection.selector).slice(0, 200)) {
+                    const rect = element.getBoundingClientRect();
+                    const mark = document.createElement('div'); mark.className = 'selected-outline';
+                    mark.style.cssText = `left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px`;
+                    root.insertBefore(mark, root.getElementById('panel'));
+                }
             } catch { /* An edited selector may be incomplete while typing. */ }
         }
     }
@@ -159,10 +165,12 @@
         editing = selections.length - 1;
         input.value = selections[editing]?.selector || '';
         input.disabled = editing < 0;
+        similar.checked = selections[editing]?.similar || false;
         preview();
     }
     function preview() {
         root.getElementById('cancel').disabled = saving;
+        similar.disabled = saving || editing < 0;
         renderSources();
         const list = root.getElementById('selected'); list.replaceChildren();
         selections.forEach((selection, index) => {
@@ -181,6 +189,7 @@
             }
             const matched = new Set(selections.flatMap(selection => matchesFor(selection.selector)));
             message.textContent = `${selections.length} selected filter(s), ${matched.size} matching element(s) on ${location.hostname}. Keep picking, or edit the last selector, then save all at once.`;
+            if (matched.size > selections.length) message.textContent += ' Saving hides every match; blue outlines preview up to 200 per filter.';
             if (selections.some(selection => selection.selector.includes(':nth-of-type('))) {
                 message.textContent += ' Positional filters may stop matching when the page layout changes; prefer stable classes or ad attributes.';
             }
@@ -194,22 +203,38 @@
         if (saving) return;
         const selected = event.target;
         if (!(selected instanceof Element) || selected === document.body || selected === document.documentElement) return;
-        const selector = selectorFor(selected);
-        const existing = selections.findIndex(selection => selection.element === selected || selection.selector === selector);
+        const selector = selectorFor(selected, similar.checked);
+        const existing = selections.findIndex(selection => selection.element === selected);
         if (existing >= 0) { remove(existing); return; }
+        const covered = selections.findIndex(selection => selection.selector === selector);
+        if (covered >= 0) {
+            editing = covered; input.value = selector; similar.checked = selections[covered].similar;
+            preview(); message.textContent += ' This element is already covered by the selected filter.'; return;
+        }
         if (selections.length >= 1000) { message.textContent = 'Select up to 1000 filters at a time.'; return; }
-        selections.push({element:selected, selector, sources:sourcesFor(selected)}); editing = selections.length - 1;
+        selections.push({element:selected, selector, similar:similar.checked, sources:sourcesFor(selected)}); editing = selections.length - 1;
         input.value = selector; input.disabled = false; outline.hidden = true; preview();
     }
     function keydown(event) { if (event.key === "Escape") { event.preventDefault(); if (!saving) close(); } }
     input.addEventListener("input", () => {
         if (editing >= 0) {
             selections[editing].selector = input.value.trim();
+            selections[editing].similar = false; similar.checked = false;
             try { selections[editing].sources = [...new Set(matchesFor(input.value.trim()).slice(0, 200).flatMap(sourcesFor))]; }
             catch { selections[editing].sources = []; }
         }
         preview();
     });
+    similar.onchange = () => {
+        if (editing < 0 || saving) return;
+        const selection = selections[editing];
+        selection.similar = similar.checked;
+        selection.selector = selectorFor(selection.element, similar.checked);
+        input.value = selection.selector;
+        try { selection.sources = [...new Set(matchesFor(selection.selector).slice(0, 200).flatMap(sourcesFor))]; }
+        catch { selection.sources = []; }
+        preview();
+    };
     root.getElementById("cancel").onclick = close;
     save.onclick = async () => {
         if (saving || save.disabled) return;
