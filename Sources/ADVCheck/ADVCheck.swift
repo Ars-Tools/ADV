@@ -39,6 +39,7 @@ struct PageResult: Decodable {
 final class PageProbe: NSObject, WKNavigationDelegate {
     private let webView: WKWebView
     private var completion: CheckedContinuation<Void, any Error>?
+    private var timeout: Task<Void, Never>?
 
     init(ruleList: WKContentRuleList?) {
         let configuration = WKWebViewConfiguration()
@@ -123,7 +124,7 @@ final class PageProbe: NSObject, WKNavigationDelegate {
         let popupHTML = try String(contentsOf: resourceDirectory.appendingPathComponent("popup.html"), encoding: .utf8)
         let controlsJSON = try await runJavaScript("return await window.runADVWorkspaceControls(help,popup,html);", arguments: ["help":help,"popup":popupScript,"html":popupHTML])
         let controls = try JSONDecoder().decode([String].self, from: Data(controlsJSON.utf8))
-        guard controls.count == 7 else { throw NSError(domain:"ADVCheck",code:14) }
+        guard controls.count == 9 else { throw NSError(domain:"ADVCheck",code:14) }
         for result in controls { print("PASS: \(result).") }
 
 
@@ -194,8 +195,9 @@ final class PageProbe: NSObject, WKNavigationDelegate {
             } else {
                 webView.load(URLRequest(url: url))
             }
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(20))
+            timeout = Task { @MainActor in
+                do { try await Task.sleep(for: .seconds(20)) }
+                catch { return }
                 guard completion != nil else { return }
                 webView.stopLoading()
                 finish(URLError(.timedOut))
@@ -209,6 +211,8 @@ final class PageProbe: NSObject, WKNavigationDelegate {
 
     private func finish(_ error: (any Error)?) {
         guard let continuation = completion else { return }
+        timeout?.cancel()
+        timeout = nil
         completion = nil
         if let error { continuation.resume(throwing: error) }
         else { continuation.resume() }
