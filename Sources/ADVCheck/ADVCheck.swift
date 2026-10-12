@@ -124,7 +124,7 @@ final class PageProbe: NSObject, WKNavigationDelegate {
         let popupHTML = try String(contentsOf: resourceDirectory.appendingPathComponent("popup.html"), encoding: .utf8)
         let controlsJSON = try await runJavaScript("return await window.runADVWorkspaceControls(help,popup,html);", arguments: ["help":help,"popup":popupScript,"html":popupHTML])
         let controls = try JSONDecoder().decode([String].self, from: Data(controlsJSON.utf8))
-        guard controls.count == 11 else { throw NSError(domain:"ADVCheck",code:14) }
+        guard controls.count == 12 else { throw NSError(domain:"ADVCheck",code:14) }
         for result in controls { print("PASS: \(result).") }
 
 
