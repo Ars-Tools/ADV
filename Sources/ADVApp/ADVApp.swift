@@ -30,7 +30,7 @@ struct BlockerView: View {
     private var cloudID: String? { Bundle.main.object(forInfoDictionaryKey: "ADVCloudContainer") as? String }
 
     private var extensionID: String {
-        (Bundle.main.bundleIdentifier ?? "local.adv") + ".YouTube"
+        (Bundle.main.bundleIdentifier ?? "tools.ars.browser.adv") + ".safari"
     }
 
     var body: some View {
