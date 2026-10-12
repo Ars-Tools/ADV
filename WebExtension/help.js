@@ -63,6 +63,7 @@ const ADVHelp = (() => {
         const generated = value => /[a-f0-9]{8,}|[0-9]{8,}|[a-f0-9]{8}-[a-f0-9-]{27,}/i.test(value) || (value.length >= 20 && /[0-9]/.test(value) && /[a-z]/i.test(value));
 
         function add(value, reason, label) {
+            value = value.trim();
             if (result.length >= 12 || result.some(item=>item.selector === value) || !valid(value)) return;
             try {
                 const nodes = matches(value);
@@ -70,8 +71,30 @@ const ADVHelp = (() => {
                     const previous=[...document.querySelectorAll(item.selector)];
                     return previous.length===nodes.length && previous.every(node=>nodes.includes(node));
                 })) return;
-                result.push({selector:value, reason:reason.slice(0,200), label, count:nodes.length});
+                result.push({selector:value, reason:reason.slice(0,200), label:label || (reason.startsWith('Parent') ? 'Hide parent container' : 'Hide matching elements') + ' · ' + (value.startsWith('#') ? 'ID' : value.includes('[') ? 'attribute' : 'class condition'), count:nodes.length});
             } catch { /* Not a usable page selector. */ }
+        }
+        function snapshot() {
+            const domains = [], seen = new Set();
+            let inspected = 0;
+            for (const candidate of result.slice(0,8)) {
+                for (const node of matches(candidate.selector).slice(0,200)) {
+                    const resources = [...(node.matches('img[src],iframe[src],script[src]') ? [node] : []), ...node.querySelectorAll('img[src],iframe[src],script[src]')];
+                    for (const resource of resources) {
+                        if (++inspected>500 || domains.length===4) break;
+                        try {
+                            const url = new URL(resource.currentSrc || resource.getAttribute('src'),document.baseURI);
+                            const domain = url.hostname.toLowerCase();
+                            if (!['http:','https:'].includes(url.protocol) || domain===location.hostname || !domain.includes('.') || seen.has(domain) || domain.split('.').some(part=>!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(part))) continue;
+                            seen.add(domain);
+                            domains.push({domain,selector:candidate.selector,count:candidate.count,label:`Block ${domain} · all websites`.slice(0,120),reason:'Resource host observed inside this candidate. Blocks this host and subdomains across websites; normal content may also be affected.'});
+                        } catch { /* Not an HTTP resource host. */ }
+                    }
+                    if (inspected>500 || domains.length===4) break;
+                }
+                if (inspected>500 || domains.length===4) break;
+            }
+            return {host:location.hostname, observations, candidates:[...result.slice(0,12-domains.length),...domains]};
         }
         if (mode === 'discover') {
             const words = terms.filter(word=>typeof word==='string' && word.length>1 && word.length<=40).slice(0,4);
@@ -103,11 +126,11 @@ const ADVHelp = (() => {
                     const image = node.querySelector('img[alt]')?.alt.slice(0,60) || '';
                     add(value,`Marked advertising container. ${vertical} ${side}; ${position}; ${Math.round(rect.width)}×${Math.round(rect.height)}. ${node.querySelector('iframe') ? 'Contains a frame. ' : ''}${image ? 'Image description: '+image : ''}`,`Advertising container · ${vertical} ${side}`);
                 }
-                return {host:location.hostname, observations, candidates:result};
+                return snapshot();
             }
-            for (const node of [...document.querySelectorAll('a[href], img[alt], iframe[src]')].slice(0,500)) {
+            for (const node of [...document.querySelectorAll('a[href], img[alt], img[src], iframe[src], script[src]')].slice(0,500)) {
                 let leaf, evidence, word;
-                if (node.matches('img[alt]')) {
+                if (node.matches('img[alt]') && words.some(value=>node.alt.toLowerCase().includes(value.toLowerCase()))) {
                     word = words.find(value=>node.alt.toLowerCase().includes(value.toLowerCase()));
                     if (!word) continue;
                     leaf = `img[alt*="${CSS.escape(word)}" i]`;
@@ -115,7 +138,7 @@ const ADVHelp = (() => {
                 } else {
                     if (node.matches('a') && !node.querySelector('img') && !node.closest(adScope)) continue;
                     const attr = node.matches('a') ? 'href' : 'src';
-                    const raw = node.getAttribute(attr);
+                    const raw = node.currentSrc || node.getAttribute(attr);
                     try {
                         const url = new URL(raw,document.baseURI);
                         if (!['http:','https:'].includes(url.protocol)) continue;
@@ -145,7 +168,7 @@ const ADVHelp = (() => {
                 }
                 add(selector,evidence,`Hide content mentioning ${word}`);
             }
-            return {host:location.hostname, observations, candidates:result};
+            return snapshot();
         }
         if (selector.trim()) add(selector.trim(), 'The explicit selector you supplied.');
 
@@ -163,7 +186,7 @@ const ADVHelp = (() => {
             const prefix = generated(element.id || '') && element.id.match(/^([a-z][a-z_-]{2,})(?=[0-9a-f]{8,}|[0-9]{3,})/i)?.[1];
             if (prefix) add(`${tag}[id^="${CSS.escape(prefix)}"]`, reason + ' Uses an ID prefix; verify that the prefix remains stable.');
         }
-        return {host:location.hostname, observations, candidates:result};
+        return snapshot();
     }
 
     async function page(mode, selector, selectors = [], html = '', terms = []) {
@@ -200,6 +223,14 @@ const ADVHelp = (() => {
             }
             const discovery = withQuestion && !input.value.trim() && !markup.value.trim();
             const snapshot = await page(discovery ? 'discover' : 'inspect', input.value.trim(), rules.slice(0,80).map(rule=>rule.selector), markup.value, searchTerms);
+            const sources = await browser.runtime.sendMessage({operation:'sourceList'});
+            if (sources.error) throw new Error(sources.error);
+            const known = new Set(rules.map(rule=>rule.selector.trim())), seen = new Set();
+            snapshot.candidates = snapshot.candidates.filter(candidate=>{
+                const key = candidate.domain ? 'domain:'+candidate.domain : 'css:'+candidate.selector.trim();
+                if (seen.has(key) || (candidate.domain ? sources.hosts.some(host=>candidate.domain===host || candidate.domain.endsWith('.'+host)) : known.has(candidate.selector.trim()))) return false;
+                seen.add(key); return true;
+            });
 
             const currentScope = JSON.stringify([host,input.value.trim(),markup.value]);
             if (scope !== currentScope) { history = []; conversation.replaceChildren(); scope = currentScope; }
@@ -220,7 +251,7 @@ const ADVHelp = (() => {
                 while (conversation.children.length >= 8) conversation.firstElementChild.remove();
             } else conversation.replaceChildren();
             conversation.append(answer);
-            const confirmed = discovery ? report.candidates.filter((candidate,index)=>candidate.count>0 && ((searchTerms.length && candidate.reason.includes('Inside a marked advertising container.')) || report.suggestedIndex===index)) : [];
+            const confirmed = discovery && !report.candidates[report.suggestedIndex]?.domain ? report.candidates.filter((candidate,index)=>!candidate.domain && candidate.count>0 && ((searchTerms.length && candidate.reason.includes('Inside a marked advertising container.')) || report.suggestedIndex===index)) : [];
             if (confirmed.length && ADVDraft.revision===draftRevision && !document.getElementById('selectors').value.trim()) {
                 ADVDraft.stage(confirmed.map(candidate=>candidate.selector).join('\n'), searchTerms.length ? `Proposed: hide content mentioning ${searchTerms.join(' / ')}` : 'Proposed: hide matching advertising content');
             }
@@ -229,13 +260,14 @@ const ADVHelp = (() => {
                 const row = document.createElement('li');
                 const title = document.createElement('strong'); title.textContent = candidate.label || 'Hide matching page content';
                 const details = document.createElement('details'); const summary = document.createElement('summary'); summary.textContent = 'Technical condition';
-                const code = document.createElement('code'); code.textContent = candidate.selector; details.append(summary,code);
+                const code = document.createElement('code'); code.textContent = candidate.domain || candidate.selector; details.append(summary,code);
+                if (candidate.domain) summary.textContent = 'Condition · domain and subdomains';
                 const note = document.createElement('p'); note.textContent = `${candidate.reason} ${candidate.count ?? 'Unknown'} match(es) in this document.` + (report.suggestedIndex === index ? ' Suggested by the guide.' : '');
                 const choose = document.createElement('button'); choose.textContent = 'Select & preview';
                 choose.onclick = async () => {
                     choose.disabled = true;
                     try {
-                        await ADVDraft.choose(candidate.selector,candidate.label || 'Hide matching content');
+                        await ADVDraft.choose(candidate.selector,candidate.label || 'Hide matching content',candidate.domain);
                         output.textContent = 'Selected in the draft. Review the preview results, then use Apply draft to save.';
                     } catch (error) { output.textContent = error.message; }
                     finally { choose.disabled = false; }
