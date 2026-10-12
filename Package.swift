@@ -12,9 +12,10 @@ let package = Package(
     ],
     targets: [
         .target(name: "BlockerCore"),
+        .target(name: "RuleAssistance"),
         .target(name: "SafariStateBridge", linkerSettings: [.linkedFramework("SafariServices")]),
         .executableTarget(name: "ADVApp", dependencies: ["BlockerCore", "SafariStateBridge"], exclude: ["macOS.entitlements", "AppIcon.icon"]),
-        .target(name: "WebExtensionHandler", dependencies: ["BlockerCore"], swiftSettings: [.unsafeFlags(["-application-extension"])]),
+        .target(name: "WebExtensionHandler", dependencies: ["BlockerCore", "RuleAssistance"], swiftSettings: [.unsafeFlags(["-application-extension"])]),
         .executableTarget(
             name: "ADVWebExtension", dependencies: ["WebExtensionHandler"],
             exclude: ["macOS.entitlements"],
@@ -23,5 +24,6 @@ let package = Package(
         ),
         .executableTarget(name: "ADVCheck", dependencies: ["BlockerCore"]),
         .testTarget(name: "BlockerCoreTests", dependencies: ["BlockerCore"]),
+        .testTarget(name: "RuleAssistanceTests", dependencies: ["RuleAssistance"]),
     ]
 )
