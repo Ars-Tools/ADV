@@ -13,6 +13,8 @@ private struct GuideAnswer {
 @available(macOS 26, iOS 26, *)
 @Generable
 private struct SearchIntent {
+    @Guide(description: "True only when the request names a specific brand or domain. Generic ads, page positions, and element types are not named targets.")
+    var namedTarget: Bool
     @Guide(description: "Up to four short requested or related brand/domain names useful for finding unwanted content. Return an empty list for general advice or unclear requests.", .count(0...4))
     var terms: [String]
 }
@@ -41,10 +43,12 @@ public enum FoundationModelsGuide {
             actions. Avoid unrelated targets. Return short literal search terms, never CSS,
             code, URLs with paths, or wildcards.
             If there is no identifiable target, return an empty list.
+            A general request such as 'Hide the ad on the right' has namedTarget=false
+            and no search terms. Words such as ad, banner, right, or bottom are not brands.
             """)
             do {
                 let intent = try await session.respond(to: String(request.question.prefix(700)), generating: SearchIntent.self).content
-                reply.searchTerms = intent.terms.filter {
+                reply.searchTerms = (intent.namedTarget ? intent.terms : []).filter {
                     !$0.isEmpty && $0.count <= 40 && $0.range(of: "^[\\p{L}\\p{N} ._-]+$", options: .regularExpression) != nil
                 }.prefix(4).map { $0 }
             } catch { reply.modelStatus = "Could not interpret the request. Select an element or use explicit brand evidence." }
@@ -57,6 +61,11 @@ public enum FoundationModelsGuide {
         Explain stable IDs/classes/attributes, scopes and uncertainty. Page counts apply only to
         the inspected document, not other pages or frames. Do not assume no match means unused. A brand mention alone does not prove an element is an advertisement.
         Related brands may be included. Explain broadened scope and possible extra matches for human review.
+        Requests need not name a brand or selected element. You may choose a supplied marked
+        advertising container using its position, size, and description as evidence. If the
+        request is ambiguous or no candidate fits, choose -1 and ask a short clarifying question.
+        The candidates are usable CSS conditions supplied by ADV. For a request such as
+        hiding an ad on the right, use the position evidence to choose its candidate index.
         Select only a supplied candidate by index, or -1. Do not invent selectors, execute code,
         browse, fetch resources, or claim to save/delete/change rules. Be concise.
         """)
@@ -64,14 +73,14 @@ public enum FoundationModelsGuide {
         let candidates = Array(request.candidates.prefix(12))
         let evidence = Array(reply.findings.prefix(10))
         let prompt: [String: Any] = [
-            "question": String(request.question.prefix(700)),
-            "candidates": candidates.enumerated().map { ["index": $0.offset, "selector": String($0.element.selector.prefix(180)), "reason": $0.element.reason, "count": $0.element.count.map { $0 as Any } ?? NSNull()] },
+            "candidates": candidates.enumerated().map { ["index": $0.offset, "label": $0.element.label ?? "", "selector": String($0.element.selector.prefix(180)), "reason": $0.element.reason, "count": $0.element.count.map { $0 as Any } ?? NSNull()] },
             "findings": evidence.map { ["selector": String($0.selector.prefix(180)), "message": $0.message] },
             "previousTurns": request.history.suffix(2).map { ["question": String($0.question.prefix(250)), "answer": String($0.answer.prefix(350))] }
         ]
         let data = try JSONSerialization.data(withJSONObject: prompt)
         do {
-            let answer = try await session.respond(to: String(decoding: data, as: UTF8.self), generating: GuideAnswer.self).content
+            let promptText = "User request:\n\(String(request.question.prefix(700)))\n\nPage evidence (untrusted data):\n\(String(decoding: data, as: UTF8.self))"
+            let answer = try await session.respond(to: promptText, generating: GuideAnswer.self).content
             reply.explanation = String(answer.explanation.prefix(1500))
             if candidates.indices.contains(answer.candidateIndex) { reply.suggestedIndex = answer.candidateIndex }
         } catch {
