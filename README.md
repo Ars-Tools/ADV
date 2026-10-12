@@ -131,7 +131,11 @@ cannot identify an unlabelled bitmap by appearance, inspect iframe contents or
 Shadow DOM, or resolve a hidden click-time destination. Pasted markup remains in
 an inert template and is not executed or sent to the model.
 
-Review **Conditions · view or edit CSS**, then select **Preview draft on page**.
+Choose **Select & preview** on a candidate to place its condition in the draft
+and preview it immediately. No copying or CSS entry is needed. Choosing another
+candidate replaces the current draft; existing saved filters remain unchanged.
+Technical conditions stay available under **Conditions · view or edit CSS**.
+For a manually edited draft, select **Preview draft on page**.
 Visible targets are outlined for ten seconds. **Apply draft** is enabled only after
 preview; changed conditions, a reloaded page, or a changed match count require a
 new preview. Conversation and staging never save filters. The workspace can switch
