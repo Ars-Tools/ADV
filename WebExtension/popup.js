@@ -1,25 +1,72 @@
 const status = document.getElementById("status");
 const pick = document.getElementById("pick");
 const bulk = document.getElementById("save-bulk");
+const editor = document.getElementById('selectors');
+const previewDraft = document.getElementById('preview-draft');
+let editingRule;
+let reviewed;
+let draftRevision=0;
+function draftSelectors() {
+    const lines = [...new Set(editor.value.split(/\r?\n/).map(line=>line.trim()).filter(Boolean))];
+    if (!lines.length || lines.length>1000) throw new Error('Enter between 1 and 1000 conditions.');
+    return lines;
+}
+function invalidateDraft() {
+    draftRevision++;
+    reviewed = undefined; bulk.disabled = true;
+    previewDraft.disabled = !host || !editor.value.trim();
+}
+globalThis.ADVDraft = {
+    get revision() { return draftRevision; },
+    propose(selector,title) {
+        const lines=editingRule ? [selector] : [...new Set([...editor.value.split(/\r?\n/).filter(Boolean),selector])];
+        this.stage(lines.join('\n'),title,editingRule);
+    },
+    stage(value,title='Hide matching content',rule) {
+        editingRule = rule;
+        editor.value = value;
+        document.getElementById('draft-title').textContent = title;
+        document.getElementById('draft-scope').textContent = `Hide content on ${host}. ${rule ? 'Replaces one saved condition after your approval.' : 'Adds conditions; existing filters are kept.'}`;
+        invalidateDraft();
+    }
+};
+editor.oninput = () => { document.getElementById('draft-title').textContent = editingRule ? 'Edit a saved filter' : 'Your custom conditions'; invalidateDraft(); };
+document.getElementById('clear-draft').onclick = () => {
+    ADVDraft.stage('', 'Nothing is staged yet.');
+    document.getElementById('bulk-status').textContent = 'Draft discarded. Saved filters were not changed.';
+};
+previewDraft.onclick = async () => {
+    bulk.disabled = true; previewDraft.disabled = true;
+    try {
+        const selectors = draftSelectors();
+        if (editingRule && selectors.length!==1) throw new Error('Edit one condition at a time, or discard this edit to add several.');
+        const result = await ADVHelp.page('preview',selectors.join(', '));
+        reviewed = {text:editor.value, host, count:result.count, started:result.started};
+        bulk.disabled = result.count===0;
+        document.getElementById('bulk-status').textContent = `${result.count} element(s) match this draft. Review the blue outlines before applying. Already hidden elements have no visible outline.`;
+        if (document.documentElement.classList.contains('workspace')) await browser.tabs.update(tab.id,{active:true});
+    } catch(error) { reviewed=undefined; document.getElementById('bulk-status').textContent=error.message; }
+    finally { previewDraft.disabled=!host || !editor.value.trim(); }
+};
 bulk.onclick = async () => {
     bulk.disabled = true;
-    const output = document.getElementById("bulk-status");
+    const output=document.getElementById('bulk-status');
     try {
-        const input = document.getElementById("selectors");
-        const selectors = input.value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-        if (!selectors.length || selectors.length > 1000) throw new Error("Enter between 1 and 1000 selectors.");
-        for (const selector of selectors) {
-            try { document.querySelector(selector); }
-            catch { throw new Error(`Invalid CSS selector: ${selector}`); }
-        }
-        const result = await browser.runtime.sendMessage({operation: "addMany", host, selectors});
-        if (result.error) throw new Error(result.error);
-        await render();
-        input.value = "";
-        output.textContent = `${result.added} rules saved. They remain after Safari closes. Duplicate rules were skipped.`;
-    } catch (error) { output.textContent = error.message; }
-    finally { bulk.disabled = !host; }
+        const selectors=draftSelectors();
+        if (!reviewed || reviewed.text!==editor.value || reviewed.host!==host) throw new Error('Preview the current draft before applying.');
+        const current=await ADVHelp.page('preview',selectors.join(', '));
+        if (current.started!==reviewed.started || current.count!==reviewed.count || !current.count) throw new Error('The page or target count changed. Preview the draft again.');
+        const message=editingRule
+            ? {operation:'replace',id:editingRule.id,expectedModified:editingRule.modified,host,selector:selectors[0]}
+            : {operation:'addMany',host,selectors};
+        const result=await browser.runtime.sendMessage(message);
+        if(result.error)throw new Error(result.error);
+        const changed=!!editingRule;
+        await render(); ADVDraft.stage('','Nothing is staged yet.');
+        output.textContent=changed ? 'Updated the saved condition.' : `${result.added} condition(s) saved. Existing filters were kept.`;
+    } catch(error) { output.textContent=error.message; invalidateDraft(); }
 };
+
 let tab;
 let host;
 async function renderSources() {
@@ -68,7 +115,9 @@ async function render() {
     list.replaceChildren();
     for (const rule of state.rules.filter(rule => !rule.deleted && rule.host === host)) {
         const item = document.createElement("li");
-        const code = document.createElement("code"); code.textContent = rule.selector;
+        const title=document.createElement('strong'); title.textContent=/fanza/i.test(rule.selector) ? 'Hidden content · FANZA' : /dmm/i.test(rule.selector) ? 'Hidden content · DMM' : 'Hidden page content';
+        const details=document.createElement('details'); const summary=document.createElement('summary'); summary.textContent='Condition · CSS';
+        const code = document.createElement("code"); code.textContent = rule.selector; details.append(summary,code);
         const remove = document.createElement("button"); remove.textContent = "Remove";
         remove.onclick = async () => {
             remove.disabled = true;
@@ -80,7 +129,9 @@ async function render() {
         };
         const help = document.createElement('button'); help.textContent = 'Inspect / ask';
         help.onclick = () => ADVHelp.showRule(rule.selector);
-        item.append(code, remove, help); list.append(item);
+        const edit=document.createElement('button'); edit.textContent='Edit';
+        edit.onclick=()=>{ ADVDraft.stage(rule.selector,'Edit a saved filter',rule); document.getElementById('draft-details').open=true; editor.focus(); };
+        item.append(title,details,edit,help,remove); list.append(item);
     }
     if (!list.children.length) list.textContent = "No personal rules for this site.";
 }
@@ -89,13 +140,24 @@ pick.onclick = async () => {
     try {
         if (!Number.isInteger(tab?.id)) throw new Error("No active Safari tab is available. Open a web page and reopen ADV.");
         await browser.scripting.executeScript({target: {tabId: tab.id}, files: ["personal.js", "picker.js"]});
-        window.close();
+        if(workspaceMode) await browser.tabs.update(tab.id,{active:true});
+        else window.close();
     } catch (error) {
         status.textContent = `Could not start picker: ${error.message}. Allow ADV on this site in Safari.`;
         pick.disabled = !host || !Number.isInteger(tab?.id);
-        bulk.disabled = !host;
+        bulk.disabled = true;
     }
 };
+const parameters=new URLSearchParams(location.search);
+const workspaceMode=parameters.get('workspace')==='1';
+document.documentElement.classList.toggle('workspace',workspaceMode);
+document.getElementById('open-workspace').onclick=async()=>{
+    try { await browser.tabs.create({url:browser.runtime.getURL('popup.html')+'?workspace=1&tabId='+tab.id,openerTabId:tab.id}); window.close(); }
+    catch(error){status.textContent=error.message;}
+};
+document.addEventListener('visibilitychange',()=>{
+    if(workspaceMode && !document.hidden && Number.isInteger(tab?.id)) ADVHelp.loadDraft().catch(()=>{});
+});
 (async () => {
     try {
         const network = await browser.runtime.sendMessage({operation: "networkStatus"});
@@ -103,8 +165,14 @@ pick.onclick = async () => {
             ? `Network filters: ${network.error}`
             : (network.enabled ? "Built-in network filters: enabled." : "Built-in network filters: not enabled.");
         await renderSources();
-        [tab] = await browser.tabs.query({active: true, currentWindow: true});
-        if (!Number.isInteger(tab?.id)) [tab] = await browser.tabs.query({active: true, lastFocusedWindow: true});
+        if (workspaceMode) {
+            const target=parameters.get('tabId');
+            if (!target || !/^[0-9]+$/.test(target)) throw new Error('Open the workspace from the ADV popup on the page you want to change.');
+            tab=await browser.tabs.get(Number(target));
+        } else {
+            [tab] = await browser.tabs.query({active: true, currentWindow: true});
+            if (!Number.isInteger(tab?.id)) [tab] = await browser.tabs.query({active: true, lastFocusedWindow: true});
+        }
         if (!Number.isInteger(tab?.id)) {
             document.getElementById('site').textContent = 'No active Safari tab';
             document.getElementById('activity').textContent = 'Page activity unavailable.';
@@ -116,7 +184,8 @@ pick.onclick = async () => {
         host = url.hostname;
         document.getElementById("site").textContent = host;
         pick.disabled = false;
-        bulk.disabled = false;
+        invalidateDraft();
+        document.getElementById('open-workspace').disabled = false;
         await render();
         await ADVHelp.loadDraft().catch(() => {});
         try {
