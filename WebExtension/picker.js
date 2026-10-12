@@ -31,6 +31,7 @@
     <ul id="selected" aria-label="Selected filters"></ul>
     <input id="selector" aria-label="Last selected CSS selector" placeholder="Select elements on the page" disabled>
     <label id="similar-label"><input id="similar" type="checkbox" disabled>Match similar elements by class or tag</label>
+    <button id="help-selection">Help with last selection</button>
     <button id="save" disabled>Hide selected elements</button><button id="cancel">Cancel</button>
     <div id="sources"></div><p id="source-message">Source blocking applies across websites. Shared image or video hosts may also serve normal content.</p>
     <button id="block-sources" disabled>Block sources everywhere</button></div>`;
@@ -234,6 +235,14 @@
         try { selection.sources = [...new Set(matchesFor(selection.selector).slice(0, 200).flatMap(sourcesFor))]; }
         catch { selection.sources = []; }
         preview();
+    };
+    root.getElementById('help-selection').onclick = async () => {
+        if (editing < 0 || saving) { message.textContent = 'Select an element first.'; return; }
+        try {
+            const result = await browser.runtime.sendMessage({operation:'helpDraft', selector:input.value.trim()});
+            if (result.error) throw new Error(result.error);
+            message.textContent = 'Selection sent to help without saving. Open the ADV toolbar popup to inspect or ask about it. Other unsaved selections remain here.';
+        } catch (error) { message.textContent = error.message; }
     };
     root.getElementById("cancel").onclick = close;
     save.onclick = async () => {
