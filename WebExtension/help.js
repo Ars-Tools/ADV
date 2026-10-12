@@ -77,6 +77,34 @@ const ADVHelp = (() => {
             const words = terms.filter(word=>typeof word==='string' && word.length>1 && word.length<=40).slice(0,4);
             if (words.some(word=>/^(fanza|ファンザ)$/i.test(word))) words.push('FANZA','ファンザ');
             const adScope = '[data-ad-slot], [data-ad-client], .ad-card, .advertisement, .ad, .wipe-ad-div-class, [id^="bnc_ad"], [id^="adstir_inview_"]';
+            if (!words.length) {
+                const markers = adScope + ', [data-ad-unit], .adsbygoogle, #reload-ad-div-id, [data-ref="imaAd"], [data-gc-test-id="gc-instream-root"]';
+                for (const node of [...document.querySelectorAll(markers)].slice(0,500)) {
+                    const rect = node.getBoundingClientRect();
+                    if (!rect.width || !rect.height) continue;
+                    let value;
+                    for (const name of ['data-ad-slot','data-ad-client','data-ad-unit','data-ref','data-gc-test-id']) {
+                        const attribute = node.getAttribute(name);
+                        if (attribute && !generated(attribute)) { value = `${node.localName}[${name}="${CSS.escape(attribute)}"]`; break; }
+                    }
+                    if (!value && node.id && !generated(node.id)) value = '#'+CSS.escape(node.id);
+                    if (!value) {
+                        const classes=[...node.classList].filter(value=>!generated(value)).slice(0,2);
+                        if (classes.length) value=node.localName+classes.map(value=>'.'+CSS.escape(value)).join('');
+                    }
+                    if (!value) {
+                        const prefix = ['bnc_ad','adstir_inview_'].find(prefix=>node.id.startsWith(prefix));
+                        if (prefix) value=`${node.localName}[id^="${prefix}"]`;
+                    }
+                    if (!value) continue;
+                    const side = rect.left+rect.width/2 < innerWidth/3 ? 'left' : rect.left+rect.width/2 > innerWidth*2/3 ? 'right' : 'center';
+                    const vertical = rect.top+rect.height/2 < innerHeight/3 ? 'top' : rect.top+rect.height/2 > innerHeight*2/3 ? 'bottom' : 'middle';
+                    const position = getComputedStyle(node).position;
+                    const image = node.querySelector('img[alt]')?.alt.slice(0,60) || '';
+                    add(value,`Marked advertising container. ${vertical} ${side}; ${position}; ${Math.round(rect.width)}×${Math.round(rect.height)}. ${node.querySelector('iframe') ? 'Contains a frame. ' : ''}${image ? 'Image description: '+image : ''}`,`Advertising container · ${vertical} ${side}`);
+                }
+                return {host:location.hostname, observations, candidates:result};
+            }
             for (const node of [...document.querySelectorAll('a[href], img[alt], iframe[src]')].slice(0,500)) {
                 let leaf, evidence, word;
                 if (node.matches('img[alt]')) {
@@ -167,8 +195,8 @@ const ADVHelp = (() => {
                 const explicit = /fanza|ファンザ/i.test(query) ? ['FANZA','ファンザ'] : /\bdmm\b/i.test(query) ? ['DMM'] : [];
                 const ambiguous = /don't|do not|except|以外|消さない|残して/i.test(query);
                 const fallback = !ambiguous && /hide|block|remove|非表示|隠|消|遮断/i.test(query) ? explicit : [];
-                searchTerms = intent?.searchTerms?.length ? intent.searchTerms : (intent?.modelStatus === 'On-device guide available.' ? [] : (fallback.length ? fallback : searchTerms));
-                if (!searchTerms.length) throw new Error('Name a brand or domain, or select an element with the picker.');
+                if (intent.error) throw new Error(intent.error);
+                searchTerms = intent?.searchTerms?.length ? intent.searchTerms : (intent?.modelStatus === 'On-device guide available.' ? [] : fallback);
             }
             const discovery = withQuestion && !input.value.trim() && !markup.value.trim();
             const snapshot = await page(discovery ? 'discover' : 'inspect', input.value.trim(), rules.slice(0,80).map(rule=>rule.selector), markup.value, searchTerms);
@@ -178,7 +206,7 @@ const ADVHelp = (() => {
             const report = await browser.runtime.sendMessage({operation:'assist', request:{...snapshot, question:query, history}});
             if (report.error) throw new Error(report.error);
             if (!Array.isArray(report.findings) || !Array.isArray(report.candidates)) throw new Error('Invalid guide response.');
-            output.textContent = (discovery ? `Search scope: ${searchTerms.join(', ')}. ` : '') + (discovery && !snapshot.candidates.length ? 'No explicit brand evidence found in URLs or image descriptions. Select the ad with the picker. ' : '') + report.modelStatus + (rules.length > 80 ? ' Only the first 80 rules were inspected.' : '');
+            output.textContent = (discovery ? (searchTerms.length ? `Search scope: ${searchTerms.join(', ')}. ` : 'Search scope: marked advertising containers on this page. ') : '') + (discovery && !snapshot.candidates.length ? 'No matching evidence found. Try selecting the content with the picker. ' : '') + report.modelStatus + (rules.length > 80 ? ' Only the first 80 rules were inspected.' : '');
             findings.replaceChildren(); candidates.replaceChildren();
             for (const finding of report.findings) {
                 const row = document.createElement('li'); const code = document.createElement('code'); code.textContent = finding.selector;
@@ -192,9 +220,9 @@ const ADVHelp = (() => {
                 while (conversation.children.length >= 8) conversation.firstElementChild.remove();
             } else conversation.replaceChildren();
             conversation.append(answer);
-            const confirmed = discovery ? report.candidates.filter((candidate,index)=>candidate.count>0 && (candidate.reason.includes('Inside a marked advertising container.') || report.suggestedIndex===index)) : [];
+            const confirmed = discovery ? report.candidates.filter((candidate,index)=>candidate.count>0 && ((searchTerms.length && candidate.reason.includes('Inside a marked advertising container.')) || report.suggestedIndex===index)) : [];
             if (confirmed.length && ADVDraft.revision===draftRevision && !document.getElementById('selectors').value.trim()) {
-                ADVDraft.stage(confirmed.map(candidate=>candidate.selector).join('\n'), `Proposed: hide content mentioning ${searchTerms.join(' / ')}`);
+                ADVDraft.stage(confirmed.map(candidate=>candidate.selector).join('\n'), searchTerms.length ? `Proposed: hide content mentioning ${searchTerms.join(' / ')}` : 'Proposed: hide matching advertising content');
             }
 
             for (const [index,candidate] of report.candidates.entries()) {
