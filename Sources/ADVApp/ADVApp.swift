@@ -159,6 +159,7 @@ struct BlockerView: View {
 
     @MainActor
     private func refresh() async {
+        guard !isBusy else { return }
         isBusy = true
         defer { isBusy = false }
         do {
