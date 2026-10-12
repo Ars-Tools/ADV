@@ -138,14 +138,14 @@ const ADVHelp = (() => {
                 } else {
                     if (node.matches('a') && !node.querySelector('img') && !node.closest(adScope)) continue;
                     const attr = node.matches('a') ? 'href' : 'src';
-                    const raw = node.currentSrc || node.getAttribute(attr);
+                    const raw = node.getAttribute(attr);
                     try {
-                        const url = new URL(raw,document.baseURI);
+                        const url = new URL(node.currentSrc || raw,document.baseURI);
                         if (!['http:','https:'].includes(url.protocol)) continue;
                         word = words.find(value=>value.includes('.')
                             ? url.hostname===value.toLowerCase() || url.hostname.endsWith('.'+value.toLowerCase())
                             : (url.hostname + decodeURIComponent(url.pathname)).toLowerCase().includes(value.toLowerCase()));
-                        if (!word || !raw.split(/[?#]/)[0]) continue;
+                        if (!word || !raw || !raw.split(/[?#]/)[0]) continue;
                         leaf = `${node.localName}[${attr}^="${CSS.escape(raw.split(/[?#]/)[0])}" i]`;
                         evidence = `URL host or path mentions “${word}” (${url.hostname}).`;
                     } catch { continue; }
