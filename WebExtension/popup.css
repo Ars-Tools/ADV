@@ -46,6 +46,7 @@ li { border-top: 1px solid #aaa69e; padding: 12px 0; } li button { display: bloc
 #open-workspace { width:100%; margin:0 0 12px; }
 .system-status { margin-bottom:16px; }
 summary { cursor:pointer; font-weight:700; font-size:12px; padding:8px 0; }
+summary:focus-visible { outline:none; box-shadow:inset 0 -3px var(--blue); }
 #help summary { font-size:12px; }
 #workspace { display:flex; flex-direction:column; gap:16px; }
 .panel { min-width:0; padding:16px 0; }
