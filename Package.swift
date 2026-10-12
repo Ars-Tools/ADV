@@ -13,7 +13,7 @@ let package = Package(
     targets: [
         .target(name: "BlockerCore"),
         .target(name: "SafariStateBridge", linkerSettings: [.linkedFramework("SafariServices")]),
-        .executableTarget(name: "ADVApp", dependencies: ["BlockerCore", "SafariStateBridge"], exclude: ["macOS.entitlements"]),
+        .executableTarget(name: "ADVApp", dependencies: ["BlockerCore", "SafariStateBridge"], exclude: ["macOS.entitlements", "AppIcon.icon"]),
         .target(name: "WebExtensionHandler", dependencies: ["BlockerCore"], swiftSettings: [.unsafeFlags(["-application-extension"])]),
         .executableTarget(
             name: "ADVWebExtension", dependencies: ["WebExtensionHandler"],
