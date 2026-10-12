@@ -7,6 +7,7 @@ public struct RuleObservation: Codable, Sendable {
 }
 
 public struct RuleCandidate: Codable, Sendable {
+    public let domain: String?
     public let label: String?
     public let selector: String
     public let reason: String
@@ -76,7 +77,7 @@ public enum RuleDiagnostics {
               request.question.count <= 1500, request.candidates.count <= 12,
               request.phase.map({ ["interpret", "explain"].contains($0) }) ?? true,
               request.observations.count <= 80, request.history.count <= 4,
-              request.candidates.allSatisfy({ validSelector($0.selector) && $0.reason.count <= 200 && ($0.label.map { $0.count <= 120 } ?? true) && validCount($0.count) }),
+              request.candidates.allSatisfy({ validSelector($0.selector) && validDomain($0.domain) && $0.reason.count <= 200 && ($0.label.map { $0.count <= 120 } ?? true) && validCount($0.count) }),
               request.observations.allSatisfy({ validSelector($0.selector) && validCount($0.count) && $0.matches.count <= 200 && $0.matches.allSatisfy { $0 >= 0 } }),
               request.history.allSatisfy({ $0.question.count <= 1500 && $0.answer.count <= 1500 }) else {
             throw NSError(domain: "RuleAssistance", code: 1, userInfo: [NSLocalizedDescriptionKey: "The inspection is too large or invalid. Inspect a smaller selection."])
@@ -84,6 +85,12 @@ public enum RuleDiagnostics {
     }
 
     private static func validCount(_ count: Int?) -> Bool { count.map { $0 >= 0 } ?? true }
+    private static func validDomain(_ domain: String?) -> Bool {
+        guard let domain else { return true }
+        return domain.count <= 253 && domain.contains(".") && domain.split(separator: ".", omittingEmptySubsequences: false).allSatisfy {
+            $0.range(of: "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$", options: .regularExpression) != nil
+        }
+    }
     private static func validSelector(_ selector: String) -> Bool {
         !selector.isEmpty && selector.count <= 2048 && selector.rangeOfCharacter(from: .controlCharacters) == nil &&
         !selector.contains("{") && !selector.contains("}") && !selector.contains("@")
