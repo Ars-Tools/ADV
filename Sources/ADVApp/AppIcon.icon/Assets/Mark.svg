@@ -1,6 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <path fill="#1f40a8" fill-rule="evenodd" d="M192 784 408 224 624 784H480L408 566 336 784Z"/>
-  <path fill="#171714" d="M286 560H530V644H286Z"/>
-  <circle fill="#cc261a" cx="728" cy="328" r="112"/>
-  <path fill="#f7c229" d="M664 504H792V784H664Z"/>
+  <path fill="#171714" fill-rule="evenodd" d="M128 704 232 344H296L400 704H324L306 636H222L204 704ZM240 568H288L264 472Z"/>
+  <path fill="#1f40a8" fill-rule="evenodd" d="M424 344H504C608 344 648 420 648 524S608 704 504 704H424ZM496 416V632H504C556 632 576 590 576 524S556 416 504 416Z"/>
+  <path fill="#cc261a" d="M672 344H748L796 566 844 344H920L828 704H764Z"/>
+  <path fill="#171714" d="M688 276H904V316H688Z"/>
+  <path fill="#f7c229" d="M768 196H824V244H768Z"/>
 </svg>
