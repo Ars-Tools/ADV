@@ -337,6 +337,8 @@ window.runADVHelpTests = async function(helpScript) {
   check(snapshot.candidates.some(c=>c.selector==='div.help-ad' && c.count===2),'Help derives reusable classes with real document match counts');
   check(snapshot.observations[0].matches.join()===snapshot.observations[1].matches.join() && snapshot.observations[2].count===null,'Help reports matching sets and invalid syntax without editing rules');
   check(!snapshot.candidates.some(c=>['body','html','div'].includes(c.selector)),'Help excludes unqualified whole-page candidates');
+  const repeated=api.inspectDocument('inspect','  div.help-ad  ');
+  check(repeated.candidates.filter(candidate=>candidate.selector==='div.help-ad').length===1,'Repeated trimmed CSS candidates are offered only once');
   const pasted = api.inspectDocument('inspect','',[], '<div data-gc-test-id="gc-instream-root"><script>window.__advHelpInjected=true;<'+ '/script><img src="https://should-not-load.example/test"></div>');
   check(!window.__advHelpInjected && !pasted.candidates.some(c=>c.selector.includes('should-not-load')) && pasted.candidates.some(c=>c.selector==='div[data-gc-test-id="gc-instream-root"]'),'Pasted markup stays inert and only bounded selector evidence is extracted');
   let rejected=false; try { api.inspectDocument('preview','body'); } catch { rejected=true; }
@@ -416,7 +418,7 @@ window.runADVWorkspaceControls = async function(helpScript,popupScript,popupHTML
   browser.runtime.sendMessage=message=>handlers[0](message,{tab:{id:2},url:browser.runtime.getURL('popup.html')});
   browser.runtime.sendNativeMessage=async(application,message)=>message.operation==='assist'
     ? {modelStatus:'On-device guide available.',searchTerms:message.request.question.includes('FANZA') ? ['FANZA','DMM'] : [],explanation:'Review the proposed content.',findings:[],candidates:message.request.candidates,
-        suggestedIndex:message.request.question==='Hide an ad on this page.' && message.request.phase!=='interpret' ? 0 : undefined}
+        suggestedIndex:message.request.question==='Hide an ad on this page.' && message.request.phase!=='interpret' ? 0 : message.request.question==='Block this provider on all websites.' ? message.request.candidates.findIndex(candidate=>candidate.domain) : undefined}
     : original.native(application,message);
   browser.tabs.query=async()=>[{id:1,url:location.href}];
   browser.scripting={async executeScript({func,args}){return[{frameId:0,result:func(...args)}];}};
@@ -476,6 +478,22 @@ window.runADVWorkspaceControls = async function(helpScript,popupScript,popupHTML
     apply.click();await waitFor(()=>editor.value==='');
     check(proposed.split('\n').every(selector=>saved.personalRulesV1.some(rule=>!rule.deleted && rule.selector===selector)),'Only the explicit Apply draft action persists the proposed condition');
     check(ui.querySelector('#rules').textContent.includes('DMM'),'Related-brand conditions remain visible and individually removable in the saved list');
+    const resource=document.createElement('img');resource.src='https://media.ads.invalid/banner.png';ads.firstElementChild.append(resource);
+    const beforeDomain=JSON.stringify(saved.personalRulesV1), beforeSources=JSON.stringify(saved.globalBlockedSourcesV1);
+    ui.querySelector('#help-selector').value='.ad-card';question.value='Block this provider on all websites.';ui.querySelector('#help-ask').click();
+    await waitFor(()=>!ui.querySelector('#help-ask').disabled);
+    const domainRow=[...ui.querySelectorAll('#help-candidates li')].find(row=>row.querySelector('code').textContent==='media.ads.invalid');
+    check(domainRow && domainRow.textContent.includes('all websites') && JSON.stringify(saved.globalBlockedSourcesV1)===beforeSources,'The guide can propose an observed resource domain with explicit global scope without blocking it');
+    domainRow.querySelector('button').click();await waitFor(()=>!domainRow.querySelector('button').disabled);
+    check(!apply.disabled && editor.readOnly && ui.querySelector('#draft-domain').textContent.includes('media.ads.invalid') && ui.querySelector('#bulk-status').textContent.includes('does not simulate network blocking'),'Selecting a domain previews reference elements and clearly identifies global request blocking');
+    apply.click();await waitFor(()=>editor.value==='');
+    check(saved.globalBlockedSourcesV1.includes('media.ads.invalid') && dynamicRules.some(rule=>rule.id>=100000 && new RegExp(rule.condition.regexFilter).test('https://media.ads.invalid/banner.png') && !rule.condition.resourceTypes.includes('main_frame')) && JSON.stringify(saved.personalRulesV1)===beforeDomain,'Only Apply installs the domain DNR rule without saving the preview selector as a cosmetic filter');
+    check(!editor.readOnly && ui.querySelector('#draft-domain').hidden,'Completing a domain draft restores the editable cosmetic draft');
+    const savedCondition=proposed.split('\n')[0];
+    ui.querySelector('#help-selector').value=savedCondition;ui.querySelector('#help-inspect').click();
+    await waitFor(()=>!ui.querySelector('#help-inspect').disabled);
+    check([...ui.querySelectorAll('#help-candidates code')].every(code=>code.textContent!==savedCondition && code.textContent!=='media.ads.invalid'),'Already-saved CSS and covered source domains are excluded from new proposals');
+
   } finally {
     browser.runtime.sendMessage=original.send;browser.runtime.sendNativeMessage=original.native;browser.scripting=original.scripting;browser.tabs.query=original.query;
     globalThis.__advHelpPreview?.remove();delete globalThis.ADVDraft;
