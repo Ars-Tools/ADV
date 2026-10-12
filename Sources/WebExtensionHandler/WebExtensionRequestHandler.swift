@@ -37,9 +37,10 @@ public final class WebExtensionRequestHandler: NSObject, NSExtensionRequestHandl
             case "merge":
                 let data = try JSONSerialization.data(withJSONObject: message["rules"] ?? [])
                 rules = try store.merge(JSONDecoder().decode([PersonalRule].self, from: data))
-            case "add":
-                guard let host = message["host"] as? String, let selector = message["selector"] as? String else { throw PersonalRuleError.invalidRule }
-                rules = try store.merge([PersonalRule(host: host, selector: selector)])
+            case "replace":
+                guard let id = message["id"] as? String, let host = message["host"] as? String,
+                      let selector = message["selector"] as? String, let modified = message["expectedModified"] as? Double else { throw PersonalRuleError.invalidRule }
+                rules = try store.replace(id: id, host: host, selector: selector, expectedModified: modified)
             case "remove":
                 guard let id = message["id"] as? String else { throw PersonalRuleError.invalidRule }
                 rules = try store.remove(id: id)
