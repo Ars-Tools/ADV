@@ -372,7 +372,71 @@ window.runADVHelpTests = async function(helpScript) {
     globalThis.__advHelpPreview?.remove(); delete window.host;delete window.tab;
   }
 
+
+  const brands=document.createElement('div');
+  brands.innerHTML='<div class="ad-card"><a href="https://ad.fanza.example/banner?token=private"><img alt="FANZA banner"></a></div><div class="ad-card"><a href="https://ad.games.dmm.com/banner"><img alt="DMM Games"></a></div><a href="https://fanza.example/article">Article about FANZA</a>';
+  document.body.append(brands);
+  const brandScan=api.inspectDocument('discover','',[],'',['FANZA']);
+  check(brandScan.candidates.length===1 && brandScan.candidates[0].count===1,'Brand discovery proposes a marked advertising container and deduplicates alternative evidence');
+  check(!brandScan.candidates.some(candidate=>candidate.selector.includes('dmm')) && !brandScan.candidates[0].selector.includes('article'),'A narrow search respects its literal terms and skips ordinary text links');
+  check(!JSON.stringify(brandScan).includes('private') && brandScan.candidates[0].reason.includes('URL host or path'),'Brand evidence strips resource query strings and states its actual source');
+  const broadened=api.inspectDocument('discover','',[],'',['FANZA','DMM']);
+  check(broadened.candidates.some(candidate=>candidate.selector.includes('dmm')) && broadened.candidates.filter(candidate=>candidate.reason.includes('Inside a marked advertising container.')).length===2,'Related-brand terms from the guide can broaden the visible draft to DMM Games');
+  const absent=api.inspectDocument('discover','',[],'',['UnknownBrand']);
+  check(absent.candidates.length===0,'Absent brand evidence produces no invented filter');
+  brands.remove();
+  const rule={id:crypto.randomUUID(),host:location.hostname,selector:'.before-edit',modified:Date.now(),deleted:false};
+  remote.push(rule); saved.personalRulesV1=clone(remote);
+  const updated=await handlers[0]({operation:'replace',id:rule.id,host:rule.host,selector:'.after-edit',expectedModified:rule.modified},{});
+  const replaced=updated.rules.find(item=>item.id===rule.id);
+  check(replaced.selector==='.after-edit' && replaced.modified>rule.modified && !replaced.deleted,'Explicit edits preserve rule identity and modification ordering');
+  const stale=await handlers[0]({operation:'replace',id:rule.id,host:rule.host,selector:'.stale-edit',expectedModified:rule.modified},{});
+  check(!!stale.error && remote.find(item=>item.id===rule.id).selector==='.after-edit','Stale edits cannot overwrite a newer saved condition');
   ui.remove();selection.remove();
+  return JSON.stringify(results);
+};
+
+window.runADVWorkspaceControls = async function(helpScript,popupScript,popupHTML) {
+  const results=[];
+  function check(value,name) { if(!value)throw new Error(name); results.push(name); }
+  async function waitFor(predicate) { for(let i=0;i<100;i++){if(predicate())return;await new Promise(resolve=>setTimeout(resolve,20));}throw new Error('Workspace controls did not settle'); }
+  const ui=document.createElement('div');
+  ui.innerHTML=new DOMParser().parseFromString(popupHTML,'text/html').body.innerHTML;
+  const ads=document.createElement('div');
+  ads.innerHTML='<div class="ad-card"><a href="https://ad.fanza.example/banner"><img alt="FANZA ad" width="30" height="30"></a></div><div class="ad-card"><a href="https://ad.games.dmm.com/banner"><img alt="DMM Games" width="30" height="30"></a></div>';
+  document.body.append(ui,ads);
+  const original={send:browser.runtime.sendMessage,native:browser.runtime.sendNativeMessage,scripting:browser.scripting,query:browser.tabs.query};
+  browser.runtime.sendMessage=message=>handlers[0](message,{});
+  browser.runtime.sendNativeMessage=async(application,message)=>message.operation==='assist'
+    ? {modelStatus:'On-device guide available.',searchTerms:['FANZA','DMM'],explanation:'Review FANZA and related DMM content.',findings:[],candidates:message.request.candidates}
+    : original.native(application,message);
+  browser.tabs.query=async()=>[{id:1,url:location.href}];
+  browser.scripting={async executeScript({func,args}){return[{frameId:0,result:func(...args)}];}};
+  try {
+    (0,eval)(helpScript+'\n'+popupScript);
+    await waitFor(()=>!ui.querySelector('#pick').disabled);
+    const before=JSON.stringify(saved);
+    const question=ui.querySelector('#help-question');question.value='Hide the FANZA ads on this page.';ui.querySelector('#help-ask').click();
+    await waitFor(()=>!ui.querySelector('#help-ask').disabled);
+    const editor=ui.querySelector('#selectors'), apply=ui.querySelector('#save-bulk'), preview=ui.querySelector('#preview-draft');
+    check(editor.value.includes('fanza') && editor.value.includes('dmm'),'Natural-language intent stages requested and related brand conditions in the shared draft');
+    check(apply.disabled && JSON.stringify(saved)===before,'Conversation alone cannot apply a staged draft');
+    preview.click();await waitFor(()=>!preview.disabled);
+    check(!apply.disabled,'A successful target preview enables explicit application');
+    const proposed=editor.value;
+    editor.value='body';editor.dispatchEvent(new Event('input'));
+    check(apply.disabled,'Editing the draft invalidates its previous approval');
+    preview.click();await waitFor(()=>!preview.disabled);
+    check(apply.disabled && ui.querySelector('#bulk-status').textContent.includes('Whole-page'),'Whole-page proposals cannot be previewed or applied');
+    editor.value=proposed;editor.dispatchEvent(new Event('input'));preview.click();await waitFor(()=>!preview.disabled);
+    apply.click();await waitFor(()=>editor.value==='');
+    check(proposed.split('\n').every(selector=>saved.personalRulesV1.some(rule=>!rule.deleted && rule.selector===selector)),'Only the explicit Apply draft action persists the proposed condition');
+    check(ui.querySelector('#rules').textContent.includes('DMM'),'Related-brand conditions remain visible and individually removable in the saved list');
+  } finally {
+    browser.runtime.sendMessage=original.send;browser.runtime.sendNativeMessage=original.native;browser.scripting=original.scripting;browser.tabs.query=original.query;
+    globalThis.__advHelpPreview?.remove();delete globalThis.ADVDraft;
+    ui.remove();ads.remove();
+  }
   return JSON.stringify(results);
 };
 </script></body></html>
