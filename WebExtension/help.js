@@ -146,14 +146,14 @@ const ADVHelp = (() => {
         return result;
     }
     function showRule(selector) {
-        panel.open = true; input.value = selector; markup.value = ''; panel.scrollIntoView({block:'start'});
+        input.value = selector; markup.value = ''; panel.scrollIntoView({block:'start'});
     }
     async function loadDraft() {
         const draft = await browser.runtime.sendMessage({operation:'helpDraftGet', tabId:tab.id});
         if (draft.host === host && draft.selector) showRule(draft.selector);
     }
     async function investigate(withQuestion) {
-        const draftRevision=globalThis.ADVDraft?.revision;
+        const draftRevision=ADVDraft.revision;
         inspect.disabled = ask.disabled = true;
         output.textContent = withQuestion ? 'Inspecting the document and asking the on-device guide…' : 'Inspecting this document…';
         try {
@@ -193,7 +193,7 @@ const ADVHelp = (() => {
             } else conversation.replaceChildren();
             conversation.append(answer);
             const confirmed = discovery ? report.candidates.filter((candidate,index)=>candidate.count>0 && (candidate.reason.includes('Inside a marked advertising container.') || report.suggestedIndex===index)) : [];
-            if (confirmed.length && globalThis.ADVDraft && ADVDraft.revision===draftRevision && !document.getElementById('selectors').value.trim()) {
+            if (confirmed.length && ADVDraft.revision===draftRevision && !document.getElementById('selectors').value.trim()) {
                 ADVDraft.stage(confirmed.map(candidate=>candidate.selector).join('\n'), `Proposed: hide content mentioning ${searchTerms.join(' / ')}`);
             }
 
@@ -216,12 +216,7 @@ const ADVHelp = (() => {
                 };
                 edit.onclick = () => {
                     const editor = document.getElementById('selectors');
-                    if (globalThis.ADVDraft) ADVDraft.propose(candidate.selector,candidate.label || 'Hide matching content');
-                    else {
-                        const lines=editor.value.split(/\r?\n/).filter(Boolean);
-                        if(!lines.includes(candidate.selector))lines.push(candidate.selector);
-                        editor.value=lines.join('\n');
-                    }
+                    ADVDraft.propose(candidate.selector,candidate.label || 'Hide matching content');
                     editor.scrollIntoView({block:'center'}); editor.focus();
                     output.textContent = 'Added to the draft. Review its scope, preview the targets, then apply. No rule has been saved.';
                 };
