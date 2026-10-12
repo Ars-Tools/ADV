@@ -28,6 +28,8 @@ async function renderSources() {
         const result = await browser.runtime.sendMessage({operation:'sourceList'});
         if (result.error) throw new Error(result.error);
         const list = document.getElementById('blocked-sources'); list.replaceChildren();
+        // Compare from the domain suffix so related subdomains stay together.
+        result.hosts.sort((a, b) => a.split('.').reverse().join('.').localeCompare(b.split('.').reverse().join('.')));
         for (const source of result.hosts) {
             const row = document.createElement('li');
             const code = document.createElement('code'); code.textContent = source;
