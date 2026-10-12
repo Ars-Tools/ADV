@@ -4,6 +4,7 @@ const bulk = document.getElementById("save-bulk");
 const editor = document.getElementById('selectors');
 const previewDraft = document.getElementById('preview-draft');
 let editingRule;
+let draftDomain;
 let reviewed;
 let draftRevision=0;
 function draftSelectors() {
@@ -18,16 +19,21 @@ function invalidateDraft() {
 }
 globalThis.ADVDraft = {
     get revision() { return draftRevision; },
-    choose(selector,title) {
-        this.stage(selector,title,editingRule);
+    choose(selector,title,domain) {
+        this.stage(selector,title,domain ? undefined : editingRule,domain);
         document.getElementById('draft-panel').scrollIntoView({block:'start'});
         return reviewDraft();
     },
-    stage(value,title='Hide matching content',rule) {
+    stage(value,title='Hide matching content',rule,domain) {
         editingRule = rule;
+        draftDomain = domain;
         editor.value = value;
+        editor.readOnly = !!domain;
+        const domainCondition=document.getElementById('draft-domain');
+        domainCondition.hidden = !domain;
+        domainCondition.textContent = domain ? `Block ${domain} and its subdomains on all websites. Top-level navigation remains allowed.` : '';
         document.getElementById('draft-title').textContent = title;
-        document.getElementById('draft-scope').textContent = `Hide content on ${host}. ${rule ? 'Replaces one saved condition after your approval.' : 'Adds conditions; existing filters are kept.'}`;
+        document.getElementById('draft-scope').textContent = domain ? 'Global request blocking. CSS below identifies preview reference elements only; it will not be saved as a cosmetic filter.' : `Hide content on ${host}. ${rule ? 'Replaces one saved condition after your approval.' : 'Adds conditions; existing filters are kept.'}`;
         invalidateDraft();
     }
 };
@@ -46,7 +52,7 @@ async function reviewDraft() {
         if (revision !== draftRevision) return;
         reviewed = {text, host, count:result.count, started:result.started};
         bulk.disabled = result.count===0;
-        document.getElementById('bulk-status').textContent = `${result.count} element(s) match this draft. Review the blue outlines before applying. Already hidden elements have no visible outline.`;
+        document.getElementById('bulk-status').textContent = draftDomain ? `${result.count} reference element(s) match. Outlines identify the inspected content; this does not simulate network blocking. Apply will block ${draftDomain} across all websites.` : `${result.count} element(s) match this draft. Review the blue outlines before applying. Already hidden elements have no visible outline.`;
         if (document.documentElement.classList.contains('workspace')) await browser.tabs.update(tab.id,{active:true});
     } catch(error) { reviewed=undefined; document.getElementById('bulk-status').textContent=error.message; }
     finally { previewDraft.disabled=!host || !editor.value.trim(); }
@@ -56,21 +62,22 @@ bulk.onclick = async () => {
     bulk.disabled = true;
     const output=document.getElementById('bulk-status');
     try {
-        const revision=draftRevision, rule=editingRule, review=reviewed;
+        const revision=draftRevision, rule=editingRule, review=reviewed, domain=draftDomain;
         const selectors=draftSelectors();
         if (!review || review.text!==editor.value || review.host!==host) throw new Error('Preview the current draft before applying.');
         const current=await ADVHelp.page('preview',selectors.join(', '));
         if (revision!==draftRevision) throw new Error('The draft changed. Preview it again.');
         if (current.started!==review.started || current.count!==review.count || !current.count) throw new Error('The page or target count changed. Preview the draft again.');
-        const message=rule
+        const message=domain ? {operation:'sourceAdd',hosts:[domain]} : rule
             ? {operation:'replace',id:rule.id,expectedModified:rule.modified,host,selector:selectors[0]}
             : {operation:'addMany',host,selectors};
         const result=await browser.runtime.sendMessage(message);
         if(result.error)throw new Error(result.error);
         const changed=!!rule;
         await render();
+        if (domain) await renderSources();
         if (revision===draftRevision) ADVDraft.stage('','Nothing is staged yet.');
-        output.textContent=changed ? 'Updated the saved condition.' : `${result.added} condition(s) saved. Existing filters were kept.`;
+        output.textContent=domain ? `Blocked ${domain} and its subdomains across all websites. Reload affected pages.` : changed ? 'Updated the saved condition.' : `${result.added} condition(s) saved. Existing filters were kept.`;
     } catch(error) { output.textContent=error.message; invalidateDraft(); }
 };
 
