@@ -64,7 +64,7 @@ def profile_entitlements(path, bundle_id):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("platform", choices=["macos", "ios", "simulator"], nargs="?", default="macos")
-    parser.add_argument("--bundle-id", default="local.adv")
+    parser.add_argument("--bundle-id", default="tools.ars.browser.adv")
     parser.add_argument("--identity", help="codesign identity; default is ad-hoc signing on Mac/simulator")
     parser.add_argument("--app-profile", type=Path)
     parser.add_argument("--extension-profile", type=Path)
@@ -93,7 +93,7 @@ def main():
         parser.error("CloudKit container must start with iCloud.")
     signing_entitlements = []
     if all(profiles):
-        for profile, suffix in zip(profiles, [".YouTube", ""]):
+        for profile, suffix in zip(profiles, [".safari", ""]):
             ent = profile_entitlements(profile, args.bundle_id + suffix)
             if args.app_group:
                 if args.app_group not in ent.get("com.apple.security.application-groups", []):
@@ -143,17 +143,17 @@ def main():
         app_executable = app_root / "MacOS" if mac else app_root
         app_executable.mkdir(parents=True, exist_ok=True)
         shutil.copy2(binary_dir / "ADVApp", app_executable / "ADVApp")
-        youtube = app_root / "PlugIns" / "ADV.appex"
-        youtube_root = youtube / "Contents" if mac else youtube
-        youtube_executable = youtube_root / "MacOS" if mac else youtube_root
-        youtube_executable.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(binary_dir / "ADVWebExtension", youtube_executable / "ADVWebExtension")
-        youtube_resources = youtube_root / "Resources" if mac else youtube_root
-        shutil.copytree(ROOT / "WebExtension", youtube_resources, dirs_exist_ok=True)
+        extension = app_root / "PlugIns" / "ADV.appex"
+        extension_root = extension / "Contents" if mac else extension
+        extension_executable = extension_root / "MacOS" if mac else extension_root
+        extension_executable.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(binary_dir / "ADVWebExtension", extension_executable / "ADVWebExtension")
+        extension_resources = extension_root / "Resources" if mac else extension_root
+        shutil.copytree(ROOT / "WebExtension", extension_resources, dirs_exist_ok=True)
 
-        run(host_bin / "ADVCheck", "export", youtube_resources / "networkRules.json")
+        run(host_bin / "ADVCheck", "export", extension_resources / "networkRules.json")
         icon_assets, icon_info = compile_icon(staging, args.platform)
-        for resources in [app_root / "Resources" if mac else app_root, youtube_resources]:
+        for resources in [app_root / "Resources" if mac else app_root, extension_resources]:
             shutil.copytree(icon_assets, resources, dirs_exist_ok=True)
 
         common = {
@@ -162,32 +162,32 @@ def main():
             "CFBundleVersion": "4", "CFBundleInfoDictionaryVersion": "6.0",
         }
         app_info = dict(common, CFBundleIdentifier=args.bundle_id, CFBundleExecutable="ADVApp", CFBundlePackageType="APPL")
-        youtube_info = dict(common, CFBundleDisplayName="ADV", CFBundleName="ADV",
-                            CFBundleIdentifier=args.bundle_id + ".YouTube", CFBundleExecutable="ADVWebExtension",
+        extension_info = dict(common, CFBundleDisplayName="ADV", CFBundleName="ADV",
+                            CFBundleIdentifier=args.bundle_id + ".safari", CFBundleExecutable="ADVWebExtension",
                             CFBundlePackageType="XPC!", NSExtension={
                                 "NSExtensionPointIdentifier": "com.apple.Safari.web-extension",
                                 "NSExtensionPrincipalClass": "ADVWebExtensionRequestHandler"})
-        for info in [app_info, youtube_info]: info.update(icon_info)
+        for info in [app_info, extension_info]: info.update(icon_info)
         if args.app_group:
-            for info in [app_info, youtube_info]: info["ADVAppGroup"] = args.app_group
+            for info in [app_info, extension_info]: info["ADVAppGroup"] = args.app_group
         if args.cloud_container:
             app_info["ADVCloudContainer"] = args.cloud_container
-            youtube_info["ADVCloudContainer"] = args.cloud_container
+            extension_info["ADVCloudContainer"] = args.cloud_container
         if mac:
             app_info.update(LSMinimumSystemVersion="13.0", NSPrincipalClass="NSApplication",
                             NSHighResolutionCapable=True)
-            youtube_info.update(LSMinimumSystemVersion="13.0")
+            extension_info.update(LSMinimumSystemVersion="13.0")
         else:
             platform_name = "iPhoneOS" if args.platform == "ios" else "iPhoneSimulator"
-            for info in [app_info, youtube_info]:
+            for info in [app_info, extension_info]:
                 info.update(MinimumOSVersion="16.0", CFBundleSupportedPlatforms=[platform_name], UIDeviceFamily=[1, 2])
             app_info.update(UILaunchScreen={}, UIApplicationSceneManifest={"UIApplicationSupportsMultipleScenes": False},
                             UISupportedInterfaceOrientations=["UIInterfaceOrientationPortrait", "UIInterfaceOrientationLandscapeLeft", "UIInterfaceOrientationLandscapeRight"])
         write_plist(app_root / "Info.plist", app_info)
-        write_plist(youtube_root / "Info.plist", youtube_info)
+        write_plist(extension_root / "Info.plist", extension_info)
 
         if all(profiles):
-            for bundle, profile, entitlements in zip([youtube, app], profiles, signing_entitlements):
+            for bundle, profile, entitlements in zip([extension, app], profiles, signing_entitlements):
                 entitlements_path = staging / (bundle.stem + ".entitlements")
                 write_plist(entitlements_path, entitlements)
                 profile_destination = bundle / "Contents/embedded.provisionprofile" if mac else bundle / "embedded.mobileprovision"
@@ -195,7 +195,7 @@ def main():
                 run("codesign", "--force", "--sign", args.identity, "--timestamp=none", "--entitlements", entitlements_path, bundle)
         elif args.platform != "ios":
             identity = args.identity or "-"
-            for bundle, target in [(youtube, "ADVWebExtension"), (app, "ADVApp")]:
+            for bundle, target in [(extension, "ADVWebExtension"), (app, "ADVApp")]:
                 command = ["codesign", "--force", "--sign", identity, "--timestamp=none"]
                 if mac:
                     command += ["--entitlements", ROOT / "Sources" / target / "macOS.entitlements"]
