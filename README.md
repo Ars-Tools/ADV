@@ -116,6 +116,10 @@ Private Browsing has separate permission controls.
    last selected filter. Select **Hide … selected filter(s)** to save all selections
    together, or **Cancel** / Escape to dismiss without saving. The picker remains
    open while you select elements; one save persists the whole selection.
+   For repeated slots, enable **Match similar elements by class or tag**. This
+   generates a reusable class/tag filter instead of an ID or sibling position.
+   It hides every match on this hostname; review the blue outlines (up to 200 per
+   filter) before saving. Without this option, picking remains element-specific.
 5. Use **Remove** in the popup to delete a saved filter.
 
 To register several filters at once, open **Add in bulk** in the popup, paste one
@@ -150,6 +154,15 @@ applies to matching elements inserted later. Positional `:nth-of-type()` fallbac
 can break when the layout changes. A random ID alone does not identify advertising;
 when no stable DOM feature exists, block the advertising source or use a site-specific
 filter based on the actual markup.
+
+Personal filters repair their stylesheet if a page changes its contents, CSSOM
+rules, media, or enabled state. When page CSS or inline `!important` still wins,
+ADV enforces the matching element's inline display value and restores the latest
+page declaration when that element stops matching or its filter is removed.
+Selectors that depend on the `style` attribute retain stylesheet-only behavior
+to avoid changing their own matching condition. Document filters do not cross
+Shadow DOM boundaries; different iframe hostnames need their own filters and
+website permissions. `about:blank` and `srcdoc` frames are not explicitly covered.
 
 ## Block an advertising source across websites
 
