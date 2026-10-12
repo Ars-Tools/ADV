@@ -6,7 +6,7 @@ import FoundationModels
 private struct GuideAnswer {
     @Guide(description: "Explain the inspected selectors and their limits. Never claim to have saved, deleted, or tested a rule on other pages.")
     var explanation: String
-    @Guide(description: "Index of an existing candidate to preview, or -1 if none is suitable.", .range(-1...11))
+    @Guide(description: "The index field of the candidate you recommend. Set this integer alongside the explanation. Use -1 only if no supplied candidate is suitable.", .range(-1...11))
     var candidateIndex: Int
 }
 
@@ -66,6 +66,14 @@ public enum FoundationModelsGuide {
         request is ambiguous or no candidate fits, choose -1 and ask a short clarifying question.
         The candidates are usable CSS conditions supplied by ADV. For a request such as
         hiding an ad on the right, use the position evidence to choose its candidate index.
+        A candidate with a domain blocks requests to that domain and its subdomains on ALL
+        websites, while a CSS candidate only hides elements on the current site. For a request
+        to block a provider across sites, prefer a supplied domain candidate. Explain the scope
+        and possible loss of normal content. Domain evidence is not proof of an advertising-only service.
+        Set candidateIndex to the index field of the chosen candidate. A domain condition
+        is a network host, not a CSS selector; choose by its type and global scope.
+        Domain blocks cover resource requests, not top-level navigation. Subdomains prepend
+        labels: cdn.ads.example.com is below ads.example.com; ads.example.com.other is unrelated.
         Select only a supplied candidate by index, or -1. Do not invent selectors, execute code,
         browse, fetch resources, or claim to save/delete/change rules. Be concise.
         """)
@@ -73,7 +81,7 @@ public enum FoundationModelsGuide {
         let candidates = Array(request.candidates.prefix(12))
         let evidence = Array(reply.findings.prefix(10))
         let prompt: [String: Any] = [
-            "candidates": candidates.enumerated().map { ["index": $0.offset, "label": $0.element.label ?? "", "selector": String($0.element.selector.prefix(180)), "reason": $0.element.reason, "count": $0.element.count.map { $0 as Any } ?? NSNull()] },
+            "candidates": candidates.enumerated().map { ["index": $0.offset, "type": $0.element.domain == nil ? "hide elements on this website" : "block domain and subdomains on all websites", "label": $0.element.label ?? "", "domain": $0.element.domain ?? "", "condition": $0.element.domain ?? String($0.element.selector.prefix(180)), "reason": $0.element.reason, "count": $0.element.count.map { $0 as Any } ?? NSNull()] },
             "findings": evidence.map { ["selector": String($0.selector.prefix(180)), "message": $0.message] },
             "previousTurns": request.history.suffix(2).map { ["question": String($0.question.prefix(250)), "answer": String($0.answer.prefix(350))] }
         ]
