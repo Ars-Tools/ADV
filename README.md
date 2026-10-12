@@ -99,8 +99,8 @@ Then use ADV's **Safari settings** button to reopen the Extensions list.
 
 Enable **ADV** in Safari → Settings → Extensions. On iOS,
 use Settings → Apps → Safari → Extensions (Settings → Safari on iOS 16–17).
-The `.YouTube` bundle identifier is retained to preserve existing Web Extension
-settings and personal filters; the visible extension name is now **ADV**.
+The app bundle identifier is `tools.ars.browser.adv`; its Safari extension is
+`tools.ars.browser.adv.safari`. Both display as **ADV**.
 Private Browsing has separate permission controls.
 
 ## Add and remove personal filters in Safari
@@ -212,15 +212,20 @@ Existing browser-local rules migrate into shared storage, including deletion
 markers, on first access after signing is configured. Keep the same bundle IDs and
 Safari profile when upgrading.
 
-## Upgrade from the two-extension build
+## Upgrade from older identifiers
 
-Version 0.4 has exactly one `.appex`, named **ADV**, which retains the former
-`.YouTube` identifier. The independent `.ContentBlocker` extension is removed.
-Quit ADV, rebuild/reopen the app, and check Safari → Settings → Extensions.
-Enable the remaining ADV extension and grant page access to your chosen sites.
-An enabled old Content Blocker does not automatically enable the Web Extension.
-If Safari still displays a stale entry for the removed extension, restart Safari
-when convenient. Existing rules remain in the retained extension's storage.
+The current build has one `ADV.appex`, with identifier
+`tools.ars.browser.adv.safari`, inside `tools.ars.browser.adv`. Earlier local builds
+used `local.adv` and `local.adv.YouTube`; the separate Content Blocker was removed
+when the extensions were combined.
+
+Safari treats the new identifier as a different extension. Enable it and grant
+website permissions again. Browser-local cosmetic filters and global source blocks
+are not automatically migrated; record the old rules before switching and register
+them again in the new extension. Existing signed App Group cosmetic filters remain
+available when using the same group and signing team. CloudKit filters require the
+same container and environment. Do not delete old storage until migration is
+complete.
 
 The native app checks the Web Extension's enabled state on macOS and iOS 26.2+;
 older iOS versions require checking Safari settings manually. The popup also checks
@@ -239,10 +244,11 @@ from hiding page elements, which requires site access.
 Local filtering works now; cross-device iCloud sync needs the following setup:
 
 1. Join the Apple Developer Program and create explicit App IDs for your native
-   app and its `.YouTube` Web Extension, on both platforms.
-2. Register an App Group, for example `group.com.example.adv`, and enable it for
+   app (`tools.ars.browser.adv`) and Safari extension
+   (`tools.ars.browser.adv.safari`), on both platforms.
+2. Register an App Group, for example `group.tools.ars.browser.adv`, and enable it for
    both App IDs. The selected group must be allowed by every profile.
-3. Register one CloudKit container, for example `iCloud.com.example.adv`, and
+3. Register one CloudKit container, for example `iCloud.tools.ars.browser.adv`, and
    enable **iCloud / CloudKit** on the native app's App ID. Use the **same container**
    for macOS and iOS. The extension only needs App Groups.
 4. Create/download platform-appropriate Apple Development signing certificates
@@ -258,21 +264,21 @@ Example (replace every identifier/path/identity with your own):
 
 ```sh
 python3 Tools/package.py macos \
-  --bundle-id com.example.adv \
+  --bundle-id tools.ars.browser.adv \
   --identity 'Apple Development: Your Name (TEAMID)' \
   --app-profile /absolute/path/mac-App.provisionprofile \
   --extension-profile /absolute/path/mac-ADV.provisionprofile \
-  --app-group group.com.example.adv \
-  --cloud-container iCloud.com.example.adv \
+  --app-group group.tools.ars.browser.adv \
+  --cloud-container iCloud.tools.ars.browser.adv \
   --cloud-environment Development
 
 python3 Tools/package.py ios \
-  --bundle-id com.example.adv \
+  --bundle-id tools.ars.browser.adv \
   --identity 'Apple Development: Your Name (TEAMID)' \
   --app-profile /absolute/path/ios-App.mobileprovision \
   --extension-profile /absolute/path/ios-ADV.mobileprovision \
-  --app-group group.com.example.adv \
-  --cloud-container iCloud.com.example.adv \
+  --app-group group.tools.ars.browser.adv \
+  --cloud-container iCloud.tools.ars.browser.adv \
   --cloud-environment Development
 
 xcrun devicectl device install app --device YOUR_DEVICE_ID dist/ios/ADV.app
@@ -311,7 +317,7 @@ and disables its sync button.
 python3 Tools/package.py ios
 python3 Tools/package.py simulator
 xcrun simctl install booted dist/simulator/ADV.app
-xcrun simctl launch booted local.adv
+xcrun simctl launch booted tools.ars.browser.adv
 ```
 
 The default device bundle is **unsigned**, for compile validation only, and cannot
