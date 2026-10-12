@@ -415,7 +415,8 @@ window.runADVWorkspaceControls = async function(helpScript,popupScript,popupHTML
   const original={send:browser.runtime.sendMessage,native:browser.runtime.sendNativeMessage,scripting:browser.scripting,query:browser.tabs.query};
   browser.runtime.sendMessage=message=>handlers[0](message,{tab:{id:2},url:browser.runtime.getURL('popup.html')});
   browser.runtime.sendNativeMessage=async(application,message)=>message.operation==='assist'
-    ? {modelStatus:'On-device guide available.',searchTerms:['FANZA','DMM'],explanation:'Review FANZA and related DMM content.',findings:[],candidates:message.request.candidates}
+    ? {modelStatus:'On-device guide available.',searchTerms:message.request.question.includes('FANZA') ? ['FANZA','DMM'] : [],explanation:'Review the proposed content.',findings:[],candidates:message.request.candidates,
+        suggestedIndex:message.request.question==='Hide an ad on this page.' && message.request.phase!=='interpret' ? 0 : undefined}
     : original.native(application,message);
   browser.tabs.query=async()=>[{id:1,url:location.href}];
   browser.scripting={async executeScript({func,args}){return[{frameId:0,result:func(...args)}];}};
@@ -455,6 +456,14 @@ window.runADVWorkspaceControls = async function(helpScript,popupScript,popupHTML
     release();await waitFor(()=>ui.querySelector('#bulk-status').textContent.includes('draft changed'));
     check(JSON.stringify(saved)===before,'Editing during the apply recheck cannot save an obsolete draft');
     browser.scripting.executeScript=execute;
+    ui.querySelector('#clear-draft').click();
+    question.value='Hide an ad on this page.';ui.querySelector('#help-ask').click();
+    await waitFor(()=>!ui.querySelector('#help-ask').disabled);
+    check(editor.value && apply.disabled && ui.querySelector('#help-status').textContent.includes('marked advertising containers') && JSON.stringify(saved)===before,'A brand-free request can stage a model-selected page candidate without choosing an element or saving');
+    ui.querySelector('#clear-draft').click();
+    question.value='What is this page about?';ui.querySelector('#help-ask').click();
+    await waitFor(()=>!ui.querySelector('#help-ask').disabled);
+    check(!editor.value && ui.querySelector('#help-candidates li') && !ui.querySelector('#help-status').textContent.includes('Name a brand'),'An unselected general request exposes candidates but does not stage them without a model choice');
     editor.value='body';editor.dispatchEvent(new Event('input'));
     check(apply.disabled,'Editing the draft invalidates its previous approval');
     preview.click();await waitFor(()=>!preview.disabled);
