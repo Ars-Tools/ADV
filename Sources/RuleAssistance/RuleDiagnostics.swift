@@ -7,6 +7,7 @@ public struct RuleObservation: Codable, Sendable {
 }
 
 public struct RuleCandidate: Codable, Sendable {
+    public let label: String?
     public let selector: String
     public let reason: String
     public let count: Int?
@@ -23,6 +24,7 @@ public struct AssistanceRequest: Codable, Sendable {
     public let candidates: [RuleCandidate]
     public let observations: [RuleObservation]
     public let history: [GuideTurn]
+    public let phase: String?
 }
 
 public struct RuleFinding: Codable, Sendable, Equatable {
@@ -36,6 +38,7 @@ public struct AssistanceReply: Codable, Sendable {
     public let candidates: [RuleCandidate]
     public var modelStatus: String
     public var suggestedIndex: Int?
+    public var searchTerms: [String] = []
 }
 
 public enum RuleDiagnostics {
@@ -71,8 +74,9 @@ public enum RuleDiagnostics {
     public static func validate(_ request: AssistanceRequest) throws {
         guard request.host.count <= 253, !request.host.isEmpty,
               request.question.count <= 1500, request.candidates.count <= 12,
+              request.phase.map({ ["interpret", "explain"].contains($0) }) ?? true,
               request.observations.count <= 80, request.history.count <= 4,
-              request.candidates.allSatisfy({ validSelector($0.selector) && $0.reason.count <= 200 && validCount($0.count) }),
+              request.candidates.allSatisfy({ validSelector($0.selector) && $0.reason.count <= 200 && ($0.label.map { $0.count <= 120 } ?? true) && validCount($0.count) }),
               request.observations.allSatisfy({ validSelector($0.selector) && validCount($0.count) && $0.matches.count <= 200 && $0.matches.allSatisfy { $0 >= 0 } }),
               request.history.allSatisfy({ $0.question.count <= 1500 && $0.answer.count <= 1500 }) else {
             throw NSError(domain: "RuleAssistance", code: 1, userInfo: [NSLocalizedDescriptionKey: "The inspection is too large or invalid. Inspect a smaller selection."])
