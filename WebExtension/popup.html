@@ -8,13 +8,13 @@
 <main id="workspace">
 <section id="help" class="panel conversation-panel"><h2><span class="index red">01</span> Describe your intent</h2>
 <p class="intro">Tell ADV what you want to hide. It will investigate and propose visible conditions. You decide what to apply.</p>
-<label for="help-question">What would you like to change?</label><textarea id="help-question" rows="3" maxlength="1500" placeholder="Help me hide the ad I selected."></textarea>
+<label for="help-question">What would you like to change?</label><textarea id="help-question" rows="3" maxlength="1500" placeholder="Help me hide an ad on this page."></textarea>
 <button id="help-ask">Find &amp; propose</button><button id="help-inspect">Check existing filters</button>
 <p id="help-status" class="hint" role="status">On-device conversation requires Apple Intelligence. Manual selection and rule inspection remain available.</p>
 <div id="help-conversation" aria-live="polite"></div>
 <details><summary>Use a selected element or HTML</summary><label for="help-selector">Element or saved CSS selector</label><input id="help-selector" placeholder=".advertisement" spellcheck="false">
 <label for="help-html">HTML fragment (optional)</label><textarea id="help-html" rows="3" maxlength="10000" spellcheck="false" placeholder="Paste the outer advertising container"></textarea></details>
-<details><summary>Investigation details</summary><p class="hint">Investigates up to 500 links, image descriptions, and iframe URLs in the top document. Brand mentions are clues, not proof of advertising. Frames and Shadow DOM are not inspected.</p><ul id="help-findings" aria-label="Rule diagnostics"></ul></details>
+<details><summary>Investigation details</summary><p class="hint">Investigates up to 500 marked advertising containers or links, image descriptions, and iframe URLs in the top document. Position and size can help identify a candidate without selecting it. Brand mentions are clues, not proof of advertising. Frames and Shadow DOM are not inspected.</p><ul id="help-findings" aria-label="Rule diagnostics"></ul></details>
 </section>
 <section id="draft-panel" class="panel"><h2><span class="index blue">02</span> Review your draft</h2>
 <p id="draft-title" class="intro">Nothing is staged yet.</p><p id="draft-scope" class="hint">Hide matching elements on this exact website. Existing filters stay in place.</p>
