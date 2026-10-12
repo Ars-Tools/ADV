@@ -118,7 +118,7 @@ final class PageProbe: NSObject, WKNavigationDelegate {
         let help = try String(contentsOf: resourceDirectory.appendingPathComponent("help.js"), encoding: .utf8)
         let helpJSON = try await runJavaScript("return await window.runADVHelpTests(help);", arguments: ["help": help])
         let helpResults = try JSONDecoder().decode([String].self, from: Data(helpJSON.utf8))
-        guard helpResults.count == 21 else { throw NSError(domain: "ADVCheck", code: 12) }
+        guard helpResults.count == 22 else { throw NSError(domain: "ADVCheck", code: 12) }
         for result in helpResults { print("PASS: \(result).") }
         let popupScript = try String(contentsOf: resourceDirectory.appendingPathComponent("popup.js"), encoding: .utf8)
         let popupHTML = try String(contentsOf: resourceDirectory.appendingPathComponent("popup.html"), encoding: .utf8)
